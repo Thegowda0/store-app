@@ -5,7 +5,8 @@ const APP_CONFIG = {
     shop: "shop.html",
     cart: "cart.html",
     product: "product.html",
-    search: "search.html"
+    search: "search.html",
+    "search-results": "search-results.html"
   },
   webviewRoutes: {
     checkout: "/checkout",

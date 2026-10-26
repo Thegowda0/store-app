@@ -6,44 +6,36 @@
       <i class="fa-solid fa-arrow-left" onclick="history.back()" style="font-size: 18px; cursor: pointer; color: #333;"></i>
       
       <div style="flex: 1; position: relative;">
-        <input type="text" id="search-page-input" placeholder="Search for products..." oninput="executeSearch()" autocomplete="off"
+        <!-- Added onkeydown to only save on Enter -->
+        <input type="text" id="search-page-input" placeholder="Search for products..." 
+          oninput="executeSearch()" 
+          onkeydown="if(event.key === 'Enter') saveSearchHistory(this.value)"
+          autocomplete="off"
           style="width: 100%; padding: 12px 40px 12px 16px; border-radius: 8px; border: 1px solid #e0e0e0; font-size: 15px; outline: none; background: #f8f8f8; transition: 0.2s;">
         <i class="fa-solid fa-magnifying-glass" style="position: absolute; right: 16px; top: 50%; transform: translateY(-50%); color: #888;"></i>
       </div>
-      
-      <i class="fa-regular fa-heart" style="font-size: 20px; color: #333; cursor: pointer;"></i>
     </div>
   </div>
 
-  <!-- DEFAULT STATE: RECENT SEARCHES (Hidden when typing) -->
+  <!-- DEFAULT STATE: RECENT SEARCHES -->
   <div id="default-search-state" style="padding: 16px;">
-    
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
       <h3 style="font-size: 16px; font-weight: 700; color: #111;">Recent Searches</h3>
       <span onclick="clearRecent()" style="font-size: 13px; color: #FF4B2B; font-weight: 600; cursor: pointer;">Clear</span>
     </div>
-    
-    <div id="recent-searches" style="display: flex; flex-wrap: wrap; gap: 8px;">
-      <!-- Recent pills injected by JS -->
-    </div>
+    <div id="recent-searches" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
 
     <h3 style="font-size: 16px; font-weight: 700; color: #111; margin-top: 32px; margin-bottom: 16px;">Trending Products</h3>
-    <div class="grid" id="trending-search">
-      <!-- Trending products injected by JS -->
-    </div>
+    <div class="grid" id="trending-search"></div>
   </div>
 
-  <!-- ACTIVE STATE: SEARCH RESULTS -->
+  <!-- ACTIVE STATE: AUTOCOMPLETE SEARCH -->
   <div id="active-search-state" style="display: none;">
-    <!-- Filter Pills -->
-    <div id="search-categories" style="display: flex; gap: 8px; overflow-x: auto; padding: 12px 16px; scrollbar-width: none; border-bottom: 1px solid #f0f0f0;">
-      <!-- Categories injected by JS -->
+    <div style="padding: 12px 16px 0; text-align: right;">
+      <span onclick="goToSearchResults()" style="font-size: 13px; color: #111; font-weight: 600; cursor: pointer;">See all results <i class="fa-solid fa-chevron-right" style="font-size:10px;"></i></span>
     </div>
-
-    <!-- Results Grid -->
-    <div id="search-results" class="grid" style="padding: 16px;">
-      <!-- Search results injected by JS -->
-    </div>
+    <!-- Autocomplete List -->
+    <div id="autocomplete-list" style="padding: 16px;"></div>
   </div>
 
 </div>

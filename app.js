@@ -3,6 +3,7 @@ const tabbar = document.getElementById("tabbar");
 
 let globalProducts = [];
 let activeCategory = "all";
+let currentSearchQuery = "";
 
 // --- TOAST ---
 function showToast(message) {
@@ -52,6 +53,7 @@ async function navigate(pageId, param = null, pushHistory = true) {
     if (pageId === "home") loadProducts("home-featured");
     if (pageId === "shop") loadProducts("product-list");
     if (pageId === "search") initSearchPage();
+    if (pageId === "search-results") initSearchResultsPage();
     if (pageId === "product" && param) loadSingleProduct(param);
     if (pageId === "cart") renderCart();
     
@@ -65,7 +67,7 @@ async function navigate(pageId, param = null, pushHistory = true) {
     t.classList.toggle("active", t.dataset.id === pageId));
 }
 
-// --- SEARCH PAGE LOGIC (BIGBASKET STYLE) ---
+// --- SEARCH PAGE (AUTOCOMPLETE) ---
 async function initSearchPage() {
   if (globalProducts.length === 0) {
     try {
@@ -74,7 +76,6 @@ async function initSearchPage() {
     } catch(e) { return; }
   }
 
-  // 1. Load Trending Products (First 4)
   document.getElementById("trending-search").innerHTML = globalProducts.slice(0, 4).map(p => `
     <div class="card" onclick="navigate('product', ${p.id})">
       <img src="${p.images[0]?.thumbnail || ''}" loading="lazy">
@@ -83,19 +84,7 @@ async function initSearchPage() {
     </div>
   `).join("");
 
-  // 2. Load Recent Searches from Memory
   renderRecentSearches();
-
-  // 3. Build Category Pills
-  const categories = ["all", ...new Set(globalProducts.map(p => p.categories[0]?.name).filter(Boolean))];
-  document.getElementById("search-categories").innerHTML = categories.map(cat => `
-    <button onclick="setSearchCategory('${cat}')" 
-      style="white-space:nowrap; padding:8px 16px; border-radius:8px; border:1px solid ${activeCategory === cat ? '#111' : '#ddd'}; background:${activeCategory === cat ? '#111' : '#fff'}; color:${activeCategory === cat ? '#fff' : '#333'}; font-size:13px; font-weight:600; cursor:pointer; transition:all 0.2s;">
-      ${cat === 'all' ? 'All Products' : cat}
-    </button>
-  `).join("");
-
-  // Focus input
   setTimeout(() => document.getElementById("search-page-input").focus(), 100);
 }
 
@@ -117,7 +106,22 @@ function renderRecentSearches() {
 
 function clickRecent(term) {
   document.getElementById("search-page-input").value = term;
-  executeSearch();
+  saveSearchHistory(term);
+  goToSearchResults();
+}
+
+// NEW: Only saves to history when called (on Enter or tapping recent)
+function saveSearchHistory(term) {
+  term = term.trim().toLowerCase();
+  if (term.length < 2) return;
+  
+  let recents = JSON.parse(localStorage.getItem("recent_searches") || "[]");
+  if (!recents.includes(term)) {
+    recents.unshift(term);
+    if (recents.length > 6) recents.pop(); // Keep max 6
+    localStorage.setItem("recent_searches", JSON.stringify(recents));
+    renderRecentSearches();
+  }
 }
 
 function clearRecent() {
@@ -125,25 +129,13 @@ function clearRecent() {
   renderRecentSearches();
 }
 
-function setSearchCategory(cat) {
-  activeCategory = cat;
-  const pills = document.getElementById("search-categories").children;
-  for (let pill of pills) {
-    const isActive = pill.textContent.trim() === (cat === 'all' ? 'All Products' : cat);
-    pill.style.background = isActive ? '#111' : '#fff';
-    pill.style.color = isActive ? '#fff' : '#333';
-    pill.style.border = isActive ? '1px solid #111' : '1px solid #ddd';
-  }
-  executeSearch();
-}
-
 function executeSearch() {
   const query = document.getElementById("search-page-input").value.trim().toLowerCase();
+  currentSearchQuery = query;
   const defaultState = document.getElementById("default-search-state");
   const activeState = document.getElementById("active-search-state");
 
-  // Toggle views based on input
-  if (query.length === 0 && activeCategory === "all") {
+  if (query.length === 0) {
     defaultState.style.display = "block";
     activeState.style.display = "none";
     return;
@@ -152,47 +144,84 @@ function executeSearch() {
     activeState.style.display = "block";
   }
 
-  // Save to recent searches (only if query is longer than 2 chars)
-  if (query.length > 2) {
-    let recents = JSON.parse(localStorage.getItem("recent_searches") || "[]");
-    if (!recents.includes(query)) {
-      recents.unshift(query);
-      if (recents.length > 5) recents.pop();
-      localStorage.setItem("recent_searches", JSON.stringify(recents));
-      renderRecentSearches(); // Update pills behind the scenes
-    }
-  }
-
-  const filtered = globalProducts.filter(p => {
-    const matchesQuery = p.name.toLowerCase().includes(query) || (p.description || "").toLowerCase().includes(query);
-    const matchesCategory = activeCategory === "all" || p.categories.some(c => c.name.toLowerCase() === activeCategory.toLowerCase());
-    return matchesQuery && matchesCategory;
-  });
-
-  const resultsEl = document.getElementById("search-results");
+  // Show Autocomplete List (Text only)
+  const filtered = globalProducts.filter(p => p.name.toLowerCase().includes(query));
+  const listEl = document.getElementById("autocomplete-list");
+  
   if (filtered.length === 0) {
-    resultsEl.innerHTML = `
-      <div style="grid-column: span 2; text-align: center; padding: 40px 16px; color: #666;">
-        <i class="fa-solid fa-box-open" style="font-size: 48px; color: #ccc; margin-bottom: 16px;"></i>
-        <h3 style="color:#111;">No results found</h3>
-        <p style="font-size: 14px; margin-top: 8px;">Try searching for something else.</p>
-      </div>`;
+    listEl.innerHTML = `<p style="font-size:14px; color:#666;">No results for "${query}"</p>`;
     return;
   }
 
-  resultsEl.innerHTML = filtered.map(p => `
-    <div class="card" style="border: 1px solid #eee; box-shadow: none; border-radius: 12px;" onclick="navigate('product', ${p.id})">
-      <div style="position: relative;">
-        <img src="${p.images[0]?.thumbnail || ''}" loading="lazy" style="border-radius: 12px 12px 0 0;">
-        <button onclick="event.stopPropagation(); showToast('Added to Wishlist ❤️')" style="position: absolute; top: 8px; right: 8px; background: rgba(255,255,255,0.8); border: none; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;">
-          <i class="fa-regular fa-heart" style="color: #888;"></i>
+  listEl.innerHTML = filtered.slice(0, 6).map(p => `
+    <div onclick="saveSearchHistory('${p.name.replace(/'/g, "\\'")}'); navigate('product', ${p.id})" style="display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f0f0f0; cursor: pointer;">
+      <img src="${p.images[0]?.thumbnail || ''}" style="width: 40px; height: 40px; border-radius: 6px; object-fit: cover;">
+      <span style="font-size: 15px; font-weight: 500; color: #333;">${p.name}</span>
+    </div>
+  `).join("");
+}
+
+function goToSearchResults() {
+  saveSearchHistory(currentSearchQuery);
+  navigate('search-results');
+}
+
+// --- SEARCH RESULTS PAGE (BIGBASKET STYLE) ---
+function initSearchResultsPage() {
+  const query = currentSearchQuery || "All Products";
+  document.getElementById("results-search-label").textContent = query;
+
+  const filtered = globalProducts.filter(p => {
+    if (currentSearchQuery === "") return true;
+    return p.name.toLowerCase().includes(currentSearchQuery) || (p.description || "").toLowerCase().includes(currentSearchQuery);
+  });
+
+  const grid = document.getElementById("final-results-grid");
+  
+  if (filtered.length === 0) {
+    grid.innerHTML = `<div style="grid-column: span 2; text-align: center; padding: 40px;"><h3>No results found</h3></div>`;
+    return;
+  }
+
+  // Build BigBasket style cards
+  grid.innerHTML = filtered.map(p => {
+    // Calculate fake discount if on sale (for UI purposes)
+    let discountTag = "";
+    if (p.on_sale && p.prices.regular_price > p.prices.price) {
+      const reg = parseInt(p.prices.regular_price);
+      const sale = parseInt(p.prices.price);
+      const percent = Math.round(((reg - sale) / reg) * 100);
+      discountTag = `<div style="background: #FFD700; color: #111; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 4px;">${percent}% OFF</div>`;
+    }
+
+    return `
+    <div style="background: #fff; border-radius: 12px; padding: 12px; position: relative; box-shadow: 0 2px 8px rgba(0,0,0,0.04); cursor: pointer;" onclick="navigate('product', ${p.id})">
+      
+      <!-- Wishlist Heart -->
+      <button onclick="event.stopPropagation(); showToast('Added to Wishlist ❤️')" style="position: absolute; top: 12px; right: 12px; background: none; border: none; z-index: 2;">
+        <i class="fa-regular fa-heart" style="font-size: 18px; color: #aaa;"></i>
+      </button>
+
+      <img src="${p.images[0]?.thumbnail || ''}" style="width: 100%; aspect-ratio: 1/1; object-fit: contain; margin-bottom: 8px;">
+      
+      ${discountTag}
+      
+      <!-- Price -->
+      <div style="font-size: 15px; font-weight: 700; color: #111; margin-bottom: 4px;">${p.price_html}</div>
+      
+      <!-- Product Name -->
+      <h3 style="font-size: 13px; color: #555; line-height: 1.3; margin-bottom: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${p.name}</h3>
+      
+      <!-- Add Button -->
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 11px; color: #888;">1 unit</span>
+        <button onclick="event.stopPropagation(); addToCart(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.prices.price}, '${p.images[0]?.thumbnail || ''}')" 
+          style="background: #fff; border: 1px solid #008C4A; color: #008C4A; font-weight: 700; font-size: 14px; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+          +
         </button>
       </div>
-      <div style="padding: 8px 12px 12px;">
-        <div class="price" style="font-size: 14px; font-weight: 700; color: #111; margin-bottom: 4px;">${p.price_html}</div>
-        <h3 style="font-size: 13px; color: #555; white-space: normal; line-height: 1.3;">${p.name}</h3>
-      </div>
-    </div>`).join("");
+    </div>`;
+  }).join("");
 }
 
 // --- STANDARD PRODUCTS ---
