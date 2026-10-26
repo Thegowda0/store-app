@@ -288,51 +288,57 @@ function renderSearchResultsGrid(products) {
 }
 
 // --- PRODUCT DETAILS PAGE ---
+
 async function loadSingleProduct(id) {
   const el = document.getElementById("product-detail");
   const stickyBar = document.getElementById("product-sticky-bar");
-  el.innerHTML = "<p style='padding:16px;'>Loading product...</p>"; stickyBar.style.display = "none";
-  
+  el.innerHTML = "<p style="padding:16px;">Loading product...</p>";
+  stickyBar.style.display = "none";
   selectedAttributes = {};
-
   try {
     let p = globalProducts.find(item => item.id == id);
-    if (!p) { const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products/${id}`); p = await res.json(); }
+    if (!p) {
+      const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products/${id}`);
+      if (!res.ok) throw new Error("API error: " + res.status);
+      p = await res.json();
+    }
+    if (!p || !p.id) throw new Error("Product not found");
     currentProduct = p;
-
-    // Pre-select first attribute term
     if (p.attributes && p.attributes.length > 0) {
       p.attributes.forEach(attr => {
-        if (attr.terms.length > 0) selectedAttributes[attr.name] = attr.terms[0].name;
+        if (attr.terms && attr.terms.length > 0) selectedAttributes[attr.name] = attr.terms[0].name;
       });
     }
-
+    const imgSrc = (p.images && p.images[0] && p.images[0].src) ? p.images[0].src : "";
+    const thumbSrc = (p.images && p.images[0] && p.images[0].thumbnail) ? p.images[0].thumbnail : "";
+    const priceHtml = p.price_html || "";
+    const reviewCount = p.review_count || 0;
+    const description = p.description || "No description available.";
+    const safeName = (p.name || "").replace(/'/g, "\\'");
     el.innerHTML = `
       <div style="position: relative;">
         <i class="fa-solid fa-arrow-left" onclick="history.back()" style="position: absolute; top: 16px; left: 16px; font-size: 20px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 50%; cursor: pointer; z-index: 10; backdrop-filter: blur(4px);"></i>
-        <i class="fa-regular fa-heart" onclick="toggleWishlist(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.prices.price}, '${p.images[0]?.thumbnail || ''}')" style="position: absolute; top: 16px; right: 16px; font-size: 20px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 50%; cursor: pointer; z-index: 10; backdrop-filter: blur(4px);"></i>
-        <img src="${p.images[0]?.src}" style="width:100%; aspect-ratio: 1/1; object-fit: cover; border-bottom: 1px solid #eee;">
+        <i class="fa-regular fa-heart" onclick="toggleWishlist(${p.id}, '${safeName}', ${p.prices ? p.prices.price : 0}, '${thumbSrc}')" style="position: absolute; top: 16px; right: 16px; font-size: 20px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 50%; cursor: pointer; z-index: 10; backdrop-filter: blur(4px);"></i>
+        <img src="${imgSrc}" style="width:100%; aspect-ratio: 1/1; object-fit: cover; border-bottom: 1px solid #eee;">
       </div>
-      
       <div style="padding: 20px 16px;">
-        <div style="font-size: 28px; font-weight: 800; color: #111; margin-bottom: 8px;">${p.price_html}</div>
+        <div style="font-size: 28px; font-weight: 800; color: #111; margin-bottom: 8px;">${priceHtml}</div>
         <h1 style="font-size: 24px; font-weight: 600; color: #333; margin-bottom: 16px; line-height: 1.3;">${p.name}</h1>
-        
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 24px;">
           <div style="color: #FFD700; font-size: 14px;">★★★★★</div>
-          <span style="font-size: 13px; color: #888;">(${p.review_count} reviews)</span>
+          <span style="font-size: 13px; color: #888;">(${reviewCount} reviews)</span>
         </div>
-
         <div style="font-size: 14px; color: #666; line-height: 1.6; margin-bottom: 24px; border-bottom: 1px solid #eee; padding-bottom: 24px;">
-          ${p.description || 'No description available.'}
+          ${description}
         </div>
-      </div>
-    `;
-    
-    document.getElementById("main-btn-price").textContent = (parseInt(p.prices.price) / 100).toFixed(2);
+      </div>`;
+    const mainPrice = (p.prices && p.prices.price) ? (parseInt(p.prices.price) / 100).toFixed(2) : "0.00";
+    document.getElementById("main-btn-price").textContent = mainPrice;
     stickyBar.style.display = "block";
-
-  } catch(e) { el.innerHTML = "<p style='padding:16px;'>Error loading product.</p>"; console.log(e)}
+  } catch(e) {
+    console.log("Product load error:", e);
+    el.innerHTML = "<div style="padding:20px; text-align:center;"><p>Error loading product.</p><p style="font-size:12px; color:#888; margin-top:8px;">" + e.message + "</p><button onclick="history.back()" style="margin-top:16px; padding:10px 20px; background:#111; color:#fff; border:none; border-radius:8px;">Go Back</button></div>";
+  }
 }
 
 // --- VARIATION BOTTOM SHEET LOGIC ---
