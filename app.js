@@ -445,7 +445,6 @@ function closeFilterSheet() { document.getElementById("filter-overlay").style.op
 function resetFilters() { draftFilters = getEmptyFilters(); draftFilters.minPrice = minProductPrice; draftFilters.maxPrice = maxProductPrice; buildAmazonSidebar(); updateFilterCountPreview(); }
 function resetDraftFilters() { draftFilters = getEmptyFilters(); draftFilters.minPrice = minProductPrice; draftFilters.maxPrice = maxProductPrice; buildAmazonSidebar(); updateFilterCountPreview(); }
 
-let activeThumb = null;
 function startDrag(thumb, e) { activeThumb = thumb; document.addEventListener("pointermove", onDrag); document.addEventListener("pointerup", stopDrag); }
 function onDrag(e) { if (!activeThumb) return; const container = activeThumb.parentElement; const rect = container.getBoundingClientRect(); let x = e.clientX - rect.left; x = Math.max(0, Math.min(x, rect.width)); const percent = x / rect.width; const value = Math.round(minProductPrice + percent * (maxProductPrice - minProductPrice)); if (activeThumb.id === "thumb-min") { if (value < draftFilters.maxPrice) updateDraft('minPrice', value); } else { if (value > draftFilters.minPrice) updateDraft('maxPrice', value); } }
 function stopDrag() { activeThumb = null; document.removeEventListener("pointermove", onDrag); document.removeEventListener("pointerup", stopDrag); }
