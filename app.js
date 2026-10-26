@@ -221,3 +221,180 @@ function checkout() { navigate("checkout"); }
 
 updateCartBadge();
 handleRoute();
+
+// --- RESTORED SEARCH LOGIC ---
+async function initSearchPage() {
+  if (globalProducts.length === 0) {
+    try { const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products?per_page=50`); globalProducts = await res.json(); } catch(e) { return; }
+  }
+  document.getElementById("trending-search").innerHTML = globalProducts.slice(0, 4).map(p => `
+    <div class="card" onclick="navigate('product', ${p.id})">
+      <img src="${p.images[0]?.thumbnail || ''}" loading="lazy"><h3>${p.name}</h3><div class="price">${p.price_html}</div>
+    </div>
+  `).join("");
+  renderRecentSearches();
+  setTimeout(() => document.getElementById("search-page-input").focus(), 100);
+}
+
+function renderRecentSearches() {
+  const recents = JSON.parse(localStorage.getItem("recent_searches") || "[]");
+  const el = document.getElementById("recent-searches");
+  if (recents.length === 0) { el.innerHTML = `<span style="font-size: 13px; color: #888;">No recent searches yet.</span>`; return; }
+  el.innerHTML = recents.map(term => `
+    <div onclick="clickRecent('${term}')" style="padding: 8px 16px; border: 1px solid #eee; border-radius: 8px; font-size: 13px; color: #333; background: #fff; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+      <i class="fa-solid fa-clock-rotate-left" style="color: #999; font-size: 12px;"></i> ${term}
+    </div>
+  `).join("");
+}
+
+function clickRecent(term) { document.getElementById("search-page-input").value = term; saveSearchHistory(term); goToSearchResults(); }
+
+function saveSearchHistory(term) {
+  term = term.trim().toLowerCase();
+  if (term.length < 2) return;
+  let recents = JSON.parse(localStorage.getItem("recent_searches") || "[]");
+  if (!recents.includes(term)) {
+    recents.unshift(term); if (recents.length > 6) recents.pop();
+    localStorage.setItem("recent_searches", JSON.stringify(recents)); renderRecentSearches();
+  }
+}
+
+function clearRecent() { localStorage.removeItem("recent_searches"); renderRecentSearches(); }
+
+function executeSearch() {
+  const query = document.getElementById("search-page-input").value.trim().toLowerCase();
+  currentSearchQuery = query;
+  const defaultState = document.getElementById("default-search-state");
+  const activeState = document.getElementById("active-search-state");
+
+  if (query.length === 0) { defaultState.style.display = "block"; activeState.style.display = "none"; return; } 
+  else { defaultState.style.display = "none"; activeState.style.display = "block"; }
+
+  const filtered = globalProducts.filter(p => p.name.toLowerCase().includes(query));
+  const listEl = document.getElementById("autocomplete-list");
+  if (filtered.length === 0) { listEl.innerHTML = `<p style="font-size:14px; color:#666;">No results for "${query}"</p>`; return; }
+  listEl.innerHTML = filtered.slice(0, 6).map(p => `
+    <div onclick="saveSearchHistory('${p.name.replace(/'/g, "\\'")}'); navigate('product', ${p.id})" style="display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f0f0f0; cursor: pointer;">
+      <img src="${p.images[0]?.thumbnail || ''}" style="width: 40px; height: 40px; border-radius: 6px; object-fit: cover;">
+      <span style="font-size: 15px; font-weight: 500; color: #333;">${p.name}</span>
+    </div>
+  `).join("");
+}
+
+function goToSearchResults() { 
+  saveSearchHistory(currentSearchQuery); 
+  appliedFilters = getEmptyFilters();
+  navigate('search-results'); 
+}
+
+function initSearchResultsPage() {
+  document.getElementById("results-search-label").textContent = currentSearchQuery || "All Products";
+  currentPage = 1;
+  let searchProducts = globalProducts;
+  if (currentSearchQuery) {
+    searchProducts = globalProducts.filter(p => p.name.toLowerCase().includes(currentSearchQuery) || (p.description || "").toLowerCase().includes(currentSearchQuery));
+  }
+  if (searchProducts.length > 0) {
+    const prices = searchProducts.map(p => parseInt(p.prices.price) / 100);
+    minProductPrice = Math.floor(Math.min(...prices));
+    maxProductPrice = Math.ceil(Math.max(...prices));
+    appliedFilters.minPrice = minProductPrice;
+    appliedFilters.maxPrice = maxProductPrice;
+    draftFilters = JSON.parse(JSON.stringify(appliedFilters));
+  }
+  applyFilters(); 
+  buildAmazonSidebar(); 
+}
+
+function applyFilters() {
+  appliedFilters = JSON.parse(JSON.stringify(draftFilters)); 
+  closeFilterSheet();
+  currentPage = 1; 
+  const products = filterProductList(appliedFilters);
+  renderSearchResultsGrid(products);
+}
+
+function filterProductList(filters) {
+  let products = [...globalProducts];
+  if (currentSearchQuery) {
+    products = products.filter(p => p.name.toLowerCase().includes(currentSearchQuery) || (p.description || "").toLowerCase().includes(currentSearchQuery));
+  }
+  if (filters.category) products = products.filter(p => p.categories.some(c => c.name === filters.category));
+  products = products.filter(p => { const price = parseInt(p.prices.price) / 100; return price >= filters.minPrice && price <= filters.maxPrice; });
+  if (filters.minDiscount > 0) {
+    products = products.filter(p => {
+      if (!p.on_sale || parseInt(p.prices.regular_price) <= parseInt(p.prices.price)) return false;
+      const percent = Math.round(((parseInt(p.prices.regular_price) - parseInt(p.prices.price)) / parseInt(p.prices.regular_price)) * 100);
+      return percent >= filters.minDiscount;
+    });
+  }
+  for (let [key, value] of Object.entries(filters.attributes)) {
+    products = products.filter(p => { if (!p.attributes) return false; const attr = p.attributes.find(a => a.name === key); return attr && attr.terms.some(t => t.name === value); });
+  }
+  if (filters.sort === 'price-low') products.sort((a, b) => parseInt(a.prices.price) - parseInt(b.prices.price));
+  if (filters.sort === 'price-high') products.sort((a, b) => parseInt(b.prices.price) - parseInt(a.prices.price));
+  if (filters.sort === 'rating') products.sort((a, b) => parseInt(b.average_rating) - parseInt(a.average_rating));
+  paginatedCache = products;
+  return products;
+}
+
+function changePage(direction) {
+  currentPage += direction;
+  renderSearchResultsGrid(paginatedCache);
+}
+
+function resetSpecificFilter(type, key) {
+  if (type === 'category') appliedFilters.category = null;
+  if (type === 'minDiscount') appliedFilters.minDiscount = 0;
+  if (type === 'sort') appliedFilters.sort = 'relevance';
+  if (type === 'price') { appliedFilters.minPrice = minProductPrice; appliedFilters.maxPrice = maxProductPrice; }
+  if (type === 'attr') delete appliedFilters.attributes[key];
+  const products = filterProductList(appliedFilters);
+  renderSearchResultsGrid(products);
+}
+
+function openFilterSheet() {
+  draftFilters = JSON.parse(JSON.stringify(appliedFilters));
+  activeSidebarTab = "sort";
+  buildAmazonSidebar();
+  updateFilterCountPreview();
+  document.getElementById("filter-overlay").style.display = "block";
+  setTimeout(() => { document.getElementById("filter-overlay").style.opacity = "1"; document.getElementById("filter-sheet").classList.add("open"); }, 10);
+}
+function closeFilterSheet() {
+  document.getElementById("filter-overlay").style.opacity = "0";
+  document.getElementById("filter-sheet").classList.remove("open");
+  setTimeout(() => document.getElementById("filter-overlay").style.display = "none", 300);
+}
+function resetFilters() {
+  draftFilters = getEmptyFilters();
+  draftFilters.minPrice = minProductPrice;
+  draftFilters.maxPrice = maxProductPrice;
+  buildAmazonSidebar();
+  updateFilterCountPreview();
+}
+function resetDraftFilters() {
+  draftFilters = getEmptyFilters();
+  draftFilters.minPrice = minProductPrice;
+  draftFilters.maxPrice = maxProductPrice;
+  buildAmazonSidebar();
+  updateFilterCountPreview();
+}
+function updateDraft(key, value) {
+  draftFilters[key] = value;
+  if (key === 'minPrice' && value >= draftFilters.maxPrice) draftFilters.minPrice = draftFilters.maxPrice - 1;
+  if (key === 'maxPrice' && value <= draftFilters.minPrice) draftFilters.maxPrice = draftFilters.minPrice + 1;
+  renderFilterContent();
+  updateFilterCountPreview();
+}
+function toggleDraftAttr(attrName, term) {
+  if (draftFilters.attributes[attrName] === term) delete draftFilters.attributes[attrName];
+  else draftFilters.attributes[attrName] = term;
+  renderFilterContent();
+  updateFilterCountPreview();
+}
+function updateFilterCountPreview() {
+  const tempProducts = filterProductList(draftFilters);
+  document.getElementById("filter-result-count").textContent = tempProducts.length;
+}
+function executeFilterSearch() { buildAmazonSidebar(); }
