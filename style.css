@@ -90,3 +90,53 @@ body { font-family: 'Inter', -apple-system, sans-serif; background:#f7f7f7; colo
 .active-pill { display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 20px; font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer; color: #333; }
 .active-pill i { font-size: 11px; color: #888; }
 .active-pill:active { background: #e0e0e0; }
+
+/* --- FIX: Ensure tabbar always on top and visible --- */
+#tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  display: flex;
+  background: #fff;
+  border-top: 1px solid #eee;
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 500;
+}
+#tabbar .tab {
+  flex: 1;
+  border: 0;
+  background: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: #888;
+  cursor: pointer;
+  position: relative;
+}
+#tabbar .tab.active { color: #111; }
+#tabbar .tab span { font-size: 20px; }
+
+/* Ensure page container leaves room for tabbar */
+#page-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 60px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Ensure sticky bars sit above tabbar but leave space for it */
+#product-sticky-bar {
+  bottom: 60px !important;
+  z-index: 490 !important;
+}
+
+/* Filter sheet should cover tabbar */
+#filter-sheet, #variation-sheet { z-index: 1001; }
+#filter-overlay, #variation-overlay { z-index: 1000; }
