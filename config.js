@@ -1,9 +1,10 @@
 const APP_CONFIG = {
-  siteUrl: "https://hckimg.site",
+  siteUrl: "https://hckimg.site", 
   nativePages: {
     home: "home.html",
     shop: "shop.html",
-    cart: "cart.html"
+    cart: "cart.html",
+    product: "product.html" // <-- Add this line
   },
   webviewRoutes: {
     checkout: "/checkout",
