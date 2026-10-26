@@ -64,7 +64,7 @@ async function navigate(pageId, param, pushHistory) {
     const path = APP_CONFIG.webviewRoutes[pageId] || "/" + pageId;
     container.innerHTML = '<iframe src="' + APP_CONFIG.siteUrl + path + '" style="width:100%;height:100%;border:0;position:absolute;top:0;left:0;bottom:60px;"></iframe>';
   }
-  document.querySelectorAll(".tab").forEach(function(t) { t.classList.toggle("active", t.dataset.id === pageId); });
+  document.querySelectorAll(".tab").forEach(function(t) { t.classList.toggle("active", t.dataset.id === pageId); }); if (pageId === "product") { document.body.classList.add("on-product-page"); } else { document.body.classList.remove("on-product-page"); } if (typeof updateFloatingCartBubble === "function") setTimeout(updateFloatingCartBubble, 100);
 }
 
 // --- SEARCH PAGE ---
@@ -351,7 +351,7 @@ function renderSearchResultsGrid(products) {
 
 // --- UTILITIES & OTHER PAGES ---
 function getCart() { return JSON.parse(localStorage.getItem("native_cart") || "[]"); }
-function saveCart(cart) { localStorage.setItem("native_cart", JSON.stringify(cart)); updateCartBadge(); }
+function saveCart(cart) { localStorage.setItem("native_cart", JSON.stringify(cart)); updateCartBadge(); if (typeof updateFloatingCartBubble === "function") updateFloatingCartBubble(); }
 function addToCart(id, name, price, image, qty) {
   if (qty === undefined) qty = 1;
   var cart = getCart();
@@ -598,7 +598,8 @@ function renderProductPage(p) {
   html += '<div style="position: absolute; top: 0; left: 0; right: 0; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">';
   html += '  <div onclick="navigate(\'home\', null, true)" style="width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"><i class="fa-solid fa-arrow-down" style="color: #111; font-size: 16px;"></i></div>';
   html += '  <div style="display: flex; gap: 8px;">';
-  html += '    <div onclick="toggleWishlist(' + p.id + ', \'' + (p.name || "").replace(/'/g, "\\'") + '\', ' + (p.prices ? p.prices.price : 0) + ', \'' + ((p.images && p.images[0]) ? p.images[0].thumbnail : '') + '\')" style="width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"><i class="fa-regular fa-heart" style="color: #111; font-size: 16px;"></i></div>';
+  html += '    <div onclick="toggleWishlist(' + p.id + ', \'' + (p.name || "").replace(/'/g, "\\'") + '\', ' + (p.prices ? p.prices.price : 0) + ', \'' + ((p.images && p.images[0]) ? p.images[0].thumbnail : '') + '\')" style="width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">var __inWish = getWishlist().some(function(w) { return w.id === p.id; });
+  <div id="product-heart-btn" onclick="toggleProductHeart()" style="width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"><i id="product-heart-icon" class="' + (__inWish ? 'fa-solid' : 'fa-regular') + ' fa-heart" style="color: ' + (__inWish ? '#FF4B2B' : '#111') + '; font-size: 16px;"></i></div>';';
   html += '    <div onclick="navigate(\'search\', null, true)" style="width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"><i class="fa-solid fa-magnifying-glass" style="color: #111; font-size: 16px;"></i></div>';
   html += '    <div onclick="shareProduct(\'' + (p.name || "").replace(/'/g, "\\'") + '\', \'' + (p.permalink || "") + '\')" style="width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"><i class="fa-solid fa-share-nodes" style="color: #111; font-size: 16px;"></i></div>';
   html += '  </div>';
@@ -762,8 +763,8 @@ function handleStickyAddToCart() {
     // All selected — add to cart directly
     doAddToCart();
   } else {
-    // No attributes — show smart popup
-    openSmartPopup();
+    // No attributes — add directly, no popup
+    doAddToCart();
   }
 }
 
@@ -844,4 +845,72 @@ function viewerNext() {
 function closeImageViewer() {
   var viewer = document.getElementById("image-viewer");
   if (viewer) viewer.style.display = "none";
+}
+
+
+function toggleProductHeart() {
+  if (!_currentProduct) return;
+  var p = _currentProduct;
+  toggleWishlist(p.id, p.name, (p.prices ? p.prices.price : 0), ((p.images && p.images[0]) ? p.images[0].thumbnail : ''));
+  var isIn = getWishlist().some(function(w) { return w.id === p.id; });
+  var icon = document.getElementById("product-heart-icon");
+  if (icon) {
+    icon.className = (isIn ? "fa-solid" : "fa-regular") + " fa-heart";
+    icon.style.color = isIn ? "#FF4B2B" : "#111";
+  }
+}
+
+// --- SWIPE SUPPORT FOR IMAGE VIEWER ---
+var _viewerTouchStartX = 0;
+var _viewerTouchEndX = 0;
+document.addEventListener("DOMContentLoaded", function() {
+  var viewerMain = document.getElementById("image-viewer-main");
+  if (!viewerMain) return;
+  viewerMain.addEventListener("touchstart", function(e) {
+    _viewerTouchStartX = e.changedTouches[0].screenX;
+  }, false);
+  viewerMain.addEventListener("touchend", function(e) {
+    _viewerTouchEndX = e.changedTouches[0].screenX;
+    handleViewerSwipe();
+  }, false);
+});
+
+function handleViewerSwipe() {
+  var diff = _viewerTouchEndX - _viewerTouchStartX;
+  if (Math.abs(diff) < 50) return; // ignore small taps
+  if (diff > 0) { viewerPrev(); } else { viewerNext(); }
+}
+
+// --- FLOATING CART BUBBLE ---
+function updateFloatingCartBubble() {
+  var bubble = document.getElementById("floating-cart-bubble");
+  var imagesEl = document.getElementById("bubble-images");
+  var countEl = document.getElementById("bubble-count");
+  if (!bubble || !imagesEl || !countEl) return;
+
+  var cart = getCart();
+  var isProductPage = document.body.classList.contains("on-product-page");
+
+  if (cart.length === 0 || !isProductPage) {
+    bubble.style.display = "none";
+    return;
+  }
+
+  bubble.style.display = "flex";
+  var totalItems = cart.reduce(function(sum, item) { return sum + item.qty; }, 0);
+  countEl.textContent = totalItems + (totalItems === 1 ? " item" : " items");
+
+  // Show up to 3 latest product images (newest first) as overlapping circles
+  var recentItems = cart.slice().reverse().slice(0, 3);
+  imagesEl.innerHTML = "";
+  recentItems.forEach(function(item, i) {
+    var img = document.createElement("img");
+    img.src = item.image;
+    img.style.cssText = "width: 32px; height: 32px; border-radius: 50%; object-fit: cover; border: 2px solid #fff; background: #fff; margin-left: " + (i === 0 ? "0" : "-10px") + "; z-index: " + (10 - i) + ";";
+    imagesEl.appendChild(img);
+  });
+
+  // Bounce animation on update
+  bubble.style.transform = "scale(1.05)";
+  setTimeout(function() { bubble.style.transform = "scale(1)"; }, 200);
 }

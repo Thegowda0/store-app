@@ -140,3 +140,8 @@ body { font-family: 'Inter', -apple-system, sans-serif; background:#f7f7f7; colo
 /* Filter sheet should cover tabbar */
 #filter-sheet, #variation-sheet { z-index: 1001; }
 #filter-overlay, #variation-overlay { z-index: 1000; }
+
+/* Hide tabbar on product page via body class */
+body.on-product-page #tabbar { display: none !important; }
+body.on-product-page #page-container { bottom: 0 !important; }
+body.on-product-page #product-sticky-bar { bottom: 0 !important; }
