@@ -4,17 +4,18 @@ const tabbar = document.getElementById("tabbar");
 let globalProducts = [];
 let currentSearchQuery = "";
 
-// Filter State
-let filterState = {
-  sort: "relevance",
-  category: null,
-  minPrice: 0,
-  maxPrice: 10000,
-  attributes: {} 
-};
+// The filters currently applied to the grid
+let appliedFilters = getEmptyFilters();
+// The filters being selected inside the menu (so we don't close it instantly)
+let draftFilters = getEmptyFilters();
 
 let minProductPrice = 0;
 let maxProductPrice = 10000;
+let activeSidebarTab = "sort";
+
+function getEmptyFilters() {
+  return { sort: "relevance", category: null, minPrice: 0, maxPrice: 10000, minDiscount: 0, attributes: {} };
+}
 
 // --- TOAST ---
 function showToast(message) {
@@ -32,14 +33,12 @@ function showToast(message) {
 
 // --- ROUTER ---
 window.addEventListener('hashchange', handleRoute);
-
 function handleRoute() {
   const hash = window.location.hash.replace('#', '');
   if (!hash) navigate("home", null, false);
   else if (hash.startsWith('product-')) navigate("product", hash.split('-')[1], false);
   else navigate(hash, null, false);
 }
-
 async function navigate(pageId, param = null, pushHistory = true) {
   if (pushHistory) {
     if (pageId === "home") history.pushState(null, "", window.location.pathname);
@@ -64,7 +63,6 @@ async function navigate(pageId, param = null, pushHistory = true) {
     const path = APP_CONFIG.webviewRoutes[pageId] || "/" + pageId;
     container.innerHTML = `<iframe src="${APP_CONFIG.siteUrl}${path}" style="width:100%;height:100%;border:0;position:absolute;top:0;left:0;bottom:60px;"></iframe>`;
   }
-  
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.id === pageId));
 }
 
@@ -73,237 +71,235 @@ async function initSearchPage() {
   if (globalProducts.length === 0) {
     try { const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products?per_page=50`); globalProducts = await res.json(); } catch(e) { return; }
   }
-
   document.getElementById("trending-search").innerHTML = globalProducts.slice(0, 4).map(p => `
-    <div class="card" onclick="navigate('product', ${p.id})">
-      <img src="${p.images[0]?.thumbnail || ''}" loading="lazy"><h3>${p.name}</h3><div class="price">${p.price_html}</div>
-    </div>
+    <div class="card" onclick="navigate('product', ${p.id})"><img src="${p.images[0]?.thumbnail || ''}" loading="lazy"><h3>${p.name}</h3><div class="price">${p.price_html}</div></div>
   `).join("");
-
   renderRecentSearches();
   setTimeout(() => document.getElementById("search-page-input").focus(), 100);
 }
-
 function renderRecentSearches() {
   const recents = JSON.parse(localStorage.getItem("recent_searches") || "[]");
   const el = document.getElementById("recent-searches");
   if (recents.length === 0) { el.innerHTML = `<span style="font-size: 13px; color: #888;">No recent searches yet.</span>`; return; }
-  el.innerHTML = recents.map(term => `
-    <div onclick="clickRecent('${term}')" style="padding: 8px 16px; border: 1px solid #eee; border-radius: 8px; font-size: 13px; color: #333; background: #fff; cursor: pointer; display: flex; align-items: center; gap: 8px;">
-      <i class="fa-solid fa-clock-rotate-left" style="color: #999; font-size: 12px;"></i> ${term}
-    </div>
-  `).join("");
+  el.innerHTML = recents.map(term => `<div onclick="clickRecent('${term}')" style="padding: 8px 16px; border: 1px solid #eee; border-radius: 8px; font-size: 13px; color: #333; background: #fff; cursor: pointer; display: flex; align-items: center; gap: 8px;"><i class="fa-solid fa-clock-rotate-left" style="color: #999; font-size: 12px;"></i> ${term}</div>`).join("");
 }
-
 function clickRecent(term) { document.getElementById("search-page-input").value = term; saveSearchHistory(term); goToSearchResults(); }
-
 function saveSearchHistory(term) {
-  term = term.trim().toLowerCase();
-  if (term.length < 2) return;
+  term = term.trim().toLowerCase(); if (term.length < 2) return;
   let recents = JSON.parse(localStorage.getItem("recent_searches") || "[]");
-  if (!recents.includes(term)) {
-    recents.unshift(term); if (recents.length > 6) recents.pop();
-    localStorage.setItem("recent_searches", JSON.stringify(recents)); renderRecentSearches();
-  }
+  if (!recents.includes(term)) { recents.unshift(term); if (recents.length > 6) recents.pop(); localStorage.setItem("recent_searches", JSON.stringify(recents)); renderRecentSearches(); }
 }
-
 function clearRecent() { localStorage.removeItem("recent_searches"); renderRecentSearches(); }
-
 function executeSearch() {
   const query = document.getElementById("search-page-input").value.trim().toLowerCase();
   currentSearchQuery = query;
   const defaultState = document.getElementById("default-search-state");
   const activeState = document.getElementById("active-search-state");
-
   if (query.length === 0) { defaultState.style.display = "block"; activeState.style.display = "none"; return; } 
   else { defaultState.style.display = "none"; activeState.style.display = "block"; }
-
   const filtered = globalProducts.filter(p => p.name.toLowerCase().includes(query));
   const listEl = document.getElementById("autocomplete-list");
   if (filtered.length === 0) { listEl.innerHTML = `<p style="font-size:14px; color:#666;">No results for "${query}"</p>`; return; }
-  listEl.innerHTML = filtered.slice(0, 6).map(p => `
-    <div onclick="saveSearchHistory('${p.name.replace(/'/g, "\\'")}'); navigate('product', ${p.id})" style="display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f0f0f0; cursor: pointer;">
-      <img src="${p.images[0]?.thumbnail || ''}" style="width: 40px; height: 40px; border-radius: 6px; object-fit: cover;">
-      <span style="font-size: 15px; font-weight: 500; color: #333;">${p.name}</span>
-    </div>
-  `).join("");
+  listEl.innerHTML = filtered.slice(0, 6).map(p => `<div onclick="saveSearchHistory('${p.name.replace(/'/g, "\\'")}'); navigate('product', ${p.id})" style="display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f0f0f0; cursor: pointer;"><img src="${p.images[0]?.thumbnail || ''}" style="width: 40px; height: 40px; border-radius: 6px; object-fit: cover;"><span style="font-size: 15px; font-weight: 500; color: #333;">${p.name}</span></div>`).join("");
 }
-
 function goToSearchResults() { 
   saveSearchHistory(currentSearchQuery); 
-  resetFilters(false); 
+  appliedFilters = getEmptyFilters();
   navigate('search-results'); 
 }
 
-// --- AMAZON STYLE FILTER UI ---
+// --- AMAZON STYLE FILTER LOGIC ---
 function initSearchResultsPage() {
   document.getElementById("results-search-label").textContent = currentSearchQuery || "All Products";
   
-  // Set min and max limits for the price slider
   if (globalProducts.length > 0) {
     const prices = globalProducts.map(p => parseInt(p.prices.price) / 100);
     minProductPrice = Math.floor(Math.min(...prices));
     maxProductPrice = Math.ceil(Math.max(...prices));
-    if (filterState.minPrice === 0) filterState.minPrice = minProductPrice;
-    if (filterState.maxPrice === 10000) filterState.maxPrice = maxProductPrice;
+    if (appliedFilters.minPrice === 0) appliedFilters.minPrice = minProductPrice;
+    if (appliedFilters.maxPrice === 10000) appliedFilters.maxPrice = maxProductPrice;
   }
 
-  buildFilterSheetUI();
-  applyFilters(); // Initial load
+  applyFilters(); // Load grid initially
+  buildAmazonSidebar(); // Build menu
 }
 
-function buildFilterSheetUI() {
-  const container = document.getElementById("filter-accordion-container");
+function buildAmazonSidebar() {
+  const sidebar = document.getElementById("filter-sidebar");
+  
+  // Build Sidebar Tabs
+  let tabs = [
+    { id: "sort", label: "Sort By" },
+    { id: "price", label: "Price and Deals" },
+    { id: "category", label: "Categories" }
+  ];
+  
+  const allAttributes = [...new Set(globalProducts.flatMap(p => p.attributes?.map(a => a.name) || []))];
+  allAttributes.forEach(attr => tabs.push({ id: `attr-${attr}`, label: attr }));
+
+  sidebar.innerHTML = tabs.map(t => `
+    <div onclick="switchFilterTab('${t.id}')" style="padding: 16px; font-size: 14px; border-bottom: 1px solid #eee; cursor: pointer; background: ${activeSidebarTab === t.id ? '#fff' : '#f9f9f9'}; border-left: 3px solid ${activeSidebarTab === t.id ? '#111' : 'transparent'}; font-weight: ${activeSidebarTab === t.id ? '600' : '400'}; color: ${activeSidebarTab === t.id ? '#111' : '#555'};">
+      ${t.label}
+    </div>
+  `).join("");
+
+  renderFilterContent();
+}
+
+function switchFilterTab(tabId) {
+  activeSidebarTab = tabId;
+  buildAmazonSidebar();
+}
+
+function renderFilterContent() {
+  const content = document.getElementById("filter-content");
   let html = "";
 
-  // 1. Sort UI (Radio Buttons)
-  html += createAccordion("sort", "Sort By", `
-    <div style="display:flex; flex-direction:column; gap:8px;">
-      ${[
-        {id: 'relevance', label: 'Relevance'},
-        {id: 'price-low', label: 'Price: Low to High'},
-        {id: 'price-high', label: 'Price: High to Low'},
-        {id: 'rating', label: 'Customer Rating'}
-      ].map(s => `
-        <label style="display:flex; align-items:center; gap:12px; font-size:15px; padding:8px 0; cursor:pointer;">
-          <input type="radio" name="sort" value="${s.id}" ${filterState.sort === s.id ? 'checked' : ''} onchange="filterState.sort='${s.id}'" style="width:18px; height:18px; accent-color:#111;">
-          <span>${s.label}</span>
-        </label>
-      `).join('')}
-    </div>
-  `);
+  if (activeSidebarTab === "sort") {
+    html += `<h3 style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">Sort By</h3>`;
+    html += [
+      {id: 'relevance', label: 'Relevance'},
+      {id: 'price-low', label: 'Price: Low to High'},
+      {id: 'price-high', label: 'Price: High to Low'},
+      {id: 'rating', label: 'Customer Rating'}
+    ].map(s => `
+      <label style="display:flex; align-items:center; gap:12px; font-size:15px; padding:12px 0; cursor:pointer;">
+        <input type="radio" name="sort" value="${s.id}" ${draftFilters.sort === s.id ? 'checked' : ''} onchange="updateDraft('sort', '${s.id}')" style="width:20px; height:20px; accent-color:#111;">
+        <span>${s.label}</span>
+      </label>
+    `).join('');
+  }
 
-  // 2. Price UI (Dual Slider)
-  html += createAccordion("price", "Price Range", `
-    <div style="padding: 10px 0;">
-      <div style="display:flex; justify-content:space-between; margin-bottom:16px; font-weight:600; font-size:14px;">
-        <span>$${filterState.minPrice}</span>
-        <span>$${filterState.maxPrice}</span>
-      </div>
-      <div style="position:relative; height:30px;">
-        <!-- Slider track -->
+  if (activeSidebarTab === "price") {
+    html += `<h3 style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">Price and Deals</h3>`;
+    
+    // Discount Pills
+    html += `<h4 style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">Discount</h4>`;
+    html += `<div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom: 24px;">
+      ${[10, 25, 35, 50, 70].map(d => `
+        <div onclick="updateDraft('minDiscount', ${d === draftFilters.minDiscount ? 0 : d})" style="padding: 8px 16px; border-radius: 20px; border: 1px solid ${draftFilters.minDiscount === d ? '#111' : '#ddd'}; background: ${draftFilters.minDiscount === d ? '#111' : '#fff'}; color: ${draftFilters.minDiscount === d ? '#fff' : '#333'}; font-size: 13px; cursor: pointer;">${d}% Off or more</div>
+      `).join('')}
+    </div>`;
+
+    // Price Slider
+    html += `<h4 style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">Price</h4>`;
+    html += `<div style="font-size: 16px; font-weight: 700; margin-bottom: 16px;">$${draftFilters.minPrice} - $${draftFilters.maxPrice}</div>`;
+    html += `
+      <div style="position:relative; height:30px; margin-bottom: 24px;">
         <div style="position:absolute; top:50%; left:0; right:0; height:4px; background:#ddd; border-radius:2px; transform:translateY(-50%); z-index:0;"></div>
-        <!-- The actual inputs -->
-        <input type="range" min="${minProductPrice}" max="${maxProductPrice}" value="${filterState.minPrice}" oninput="handleMinPrice(this.value)" style="position:absolute; width:100%; pointer-events:none; appearance:none; background:none; top:0; z-index:1;">
-        <input type="range" min="${minProductPrice}" max="${maxProductPrice}" value="${filterState.maxPrice}" oninput="handleMaxPrice(this.value)" style="position:absolute; width:100%; pointer-events:none; appearance:none; background:none; top:0; z-index:2;">
+        <input type="range" min="${minProductPrice}" max="${maxProductPrice}" value="${draftFilters.minPrice}" oninput="updateDraft('minPrice', parseInt(this.value))" style="position:absolute; width:100%; pointer-events:none; appearance:none; background:none; top:0; z-index:1;">
+        <input type="range" min="${minProductPrice}" max="${maxProductPrice}" value="${draftFilters.maxPrice}" oninput="updateDraft('maxPrice', parseInt(this.value))" style="position:absolute; width:100%; pointer-events:none; appearance:none; background:none; top:0; z-index:2;">
       </div>
-    </div>
-  `);
+    `;
+  }
 
-  // 3. Categories
-  const cats = [...new Set(globalProducts.flatMap(p => p.categories.map(c => c.name)))];
-  html += createAccordion("category", "Categories", `
-    <div style="display:flex; flex-direction:column; gap:12px;">
-      ${cats.map(c => `
-        <label style="display:flex; align-items:center; gap:12px; font-size:14px; cursor:pointer;">
-          <input type="radio" name="cat" ${filterState.category === c ? 'checked' : ''} onchange="filterState.category='${c}'" style="width:18px; height:18px; accent-color:#111;">
-          <span>${c}</span>
-        </label>
-      `).join('')}
-    </div>
-  `);
+  if (activeSidebarTab === "category") {
+    html += `<h3 style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">Categories</h3>`;
+    const cats = [...new Set(globalProducts.flatMap(p => p.categories.map(c => c.name)))];
+    html += cats.map(c => `
+      <label style="display:flex; align-items:center; gap:12px; font-size:15px; padding:10px 0; cursor:pointer;">
+        <input type="radio" name="cat" ${draftFilters.category === c ? 'checked' : ''} onchange="updateDraft('category', '${c}')" style="width:20px; height:20px; accent-color:#111;">
+        <span>${c}</span>
+      </label>
+    `).join('');
+  }
 
-  // 4. Dynamic Attributes (Color, Size, etc.)
-  const allAttributes = [...new Set(globalProducts.flatMap(p => p.attributes?.map(a => a.name) || []))];
-  
-  allAttributes.forEach(attrName => {
+  if (activeSidebarTab.startsWith("attr-")) {
+    const attrName = activeSidebarTab.replace("attr-", "");
+    html += `<h3 style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">${attrName}</h3>`;
     const terms = [...new Set(globalProducts.flatMap(p => p.attributes?.filter(a => a.name === attrName).flatMap(a => a.terms.map(t => t.name)) || []))];
-    if (terms.length === 0) return;
-
-    html += createAccordion(`attr-${attrName}`, attrName, `
-      <div style="display:flex; flex-wrap:wrap; gap:8px;">
-        ${terms.map(t => `
-          <div onclick="toggleFilterPill('${attrName}', '${t}')" style="padding: 8px 16px; border-radius: 20px; border: 1px solid ${filterState.attributes[attrName] === t ? '#111' : '#ddd'}; background: ${filterState.attributes[attrName] === t ? '#111' : '#fff'}; color: ${filterState.attributes[attrName] === t ? '#fff' : '#333'}; font-size: 13px; cursor: pointer;">${t}</div>
-        `).join('')}
-      </div>
-    `);
-  });
-
-  container.innerHTML = html;
-}
-
-function handleMinPrice(val) {
-  if (parseInt(val) >= filterState.maxPrice) filterState.minPrice = filterState.maxPrice - 1;
-  else filterState.minPrice = parseInt(val);
-  updatePriceUI();
-}
-
-function handleMaxPrice(val) {
-  if (parseInt(val) <= filterState.minPrice) filterState.maxPrice = filterState.minPrice + 1;
-  else filterState.maxPrice = parseInt(val);
-  updatePriceUI();
-}
-
-function updatePriceUI() {
-  const el = document.getElementById("accordion-price");
-  if(el) { const spans = el.querySelectorAll("span"); spans[0].textContent = `$${filterState.minPrice}`; spans[1].textContent = `$${filterState.maxPrice}`; }
-}
-
-function createAccordion(id, title, content) {
-  return `
-    <div style="border-bottom: 1px solid #eee; padding: 16px 0;">
-      <div onclick="toggleAccordion('${id}')" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
-        <h3 style="font-size: 16px; font-weight: 600; color: #111;">${title}</h3>
-        <i class="fa-solid fa-chevron-down" id="icon-${id}" style="transition: 0.3s; color: #666;"></i>
-      </div>
-      <div id="accordion-${id}" style="display: none; padding-top: 16px;">
-        ${content}
-      </div>
-    </div>
-  `;
-}
-
-function toggleAccordion(id) {
-  const el = document.getElementById(`accordion-${id}`);
-  const icon = document.getElementById(`icon-${id}`);
-  if (el.style.display === "none" || el.style.display === "") {
-    el.style.display = "block";
-    icon.style.transform = "rotate(180deg)";
-  } else {
-    el.style.display = "none";
-    icon.style.transform = "rotate(0deg)";
+    html += `<div style="display:flex; flex-wrap:wrap; gap:10px;">
+      ${terms.map(t => {
+        const isActive = draftFilters.attributes[attrName] === t;
+        return `<div onclick="toggleDraftAttr('${attrName}', '${t}')" style="padding: 10px 16px; border-radius: 20px; border: 1px solid ${isActive ? '#111' : '#ddd'}; background: ${isActive ? '#111' : '#fff'}; color: ${isActive ? '#fff' : '#333'}; font-size: 14px; cursor: pointer;">${t}</div>`;
+      }).join('')}
+    </div>`;
   }
+
+  content.innerHTML = html;
 }
 
-function toggleFilterPill(type, value) {
-  if (filterState.attributes[type] === value) delete filterState.attributes[type];
-  else filterState.attributes[type] = value;
-  buildFilterSheetUI(); 
+// Update Draft without closing or applying
+function updateDraft(key, value) {
+  draftFilters[key] = value;
+  
+  // Handle price slider logic
+  if (key === 'minPrice' && value >= draftFilters.maxPrice) draftFilters.minPrice = draftFilters.maxPrice - 1;
+  if (key === 'maxPrice' && value <= draftFilters.minPrice) draftFilters.maxPrice = draftFilters.minPrice + 1;
+  
+  renderFilterContent();
+  updateFilterCountPreview();
 }
 
-function resetFilters(rerender = true) {
-  filterState = { sort: "relevance", category: null, minPrice: minProductPrice, maxPrice: maxProductPrice, attributes: {} };
-  if (rerender) {
-    buildFilterSheetUI();
-    applyFilters();
-  }
+function toggleDraftAttr(attrName, term) {
+  if (draftFilters.attributes[attrName] === term) delete draftFilters.attributes[attrName];
+  else draftFilters.attributes[attrName] = term;
+  renderFilterContent();
+  updateFilterCountPreview();
 }
 
-// --- LOCAL FILTERING (100% ACCURATE, NO ERRORS) ---
+function updateFilterCountPreview() {
+  // Just a simple visual count for the button
+  const tempProducts = filterProductList(draftFilters);
+  document.getElementById("filter-result-count").textContent = tempProducts.length;
+}
+
+function openFilterSheet() {
+  draftFilters = JSON.parse(JSON.stringify(appliedFilters)); // Copy applied to draft
+  activeSidebarTab = "sort";
+  buildAmazonSidebar();
+  updateFilterCountPreview();
+  
+  document.getElementById("filter-overlay").style.display = "block";
+  setTimeout(() => document.getElementById("filter-overlay").style.opacity = "1", 10);
+  document.getElementById("filter-sheet").style.bottom = "0";
+}
+function closeFilterSheet() {
+  document.getElementById("filter-overlay").style.opacity = "0";
+  document.getElementById("filter-sheet").style.bottom = "-100%";
+  setTimeout(() => document.getElementById("filter-overlay").style.display = "none", 300);
+}
+function resetFilters() {
+  draftFilters = getEmptyFilters();
+  draftFilters.minPrice = minProductPrice;
+  draftFilters.maxPrice = maxProductPrice;
+  buildAmazonSidebar();
+  updateFilterCountPreview();
+}
+
 function applyFilters() {
+  appliedFilters = JSON.parse(JSON.stringify(draftFilters)); // Lock in changes
   closeFilterSheet();
   
-  // 1. Start with all products
+  const products = filterProductList(appliedFilters);
+  renderSearchResultsGrid(products);
+}
+
+function filterProductList(filters) {
   let products = [...globalProducts];
 
-  // 2. Filter by Query
   if (currentSearchQuery) {
     products = products.filter(p => p.name.toLowerCase().includes(currentSearchQuery) || (p.description || "").toLowerCase().includes(currentSearchQuery));
   }
 
-  // 3. Filter by Category
-  if (filterState.category) {
-    products = products.filter(p => p.categories.some(c => c.name === filterState.category));
+  if (filters.category) {
+    products = products.filter(p => p.categories.some(c => c.name === filters.category));
   }
 
-  // 4. Filter by Price (Remember, prices are in cents! 1800 = $18)
   products = products.filter(p => {
     const price = parseInt(p.prices.price) / 100; 
-    return price >= filterState.minPrice && price <= filterState.maxPrice;
+    return price >= filters.minPrice && price <= filters.maxPrice;
   });
 
-  // 5. Filter by Attributes (Color, Size, etc)
-  for (let [key, value] of Object.entries(filterState.attributes)) {
+  if (filters.minDiscount > 0) {
+    products = products.filter(p => {
+      if (!p.on_sale || parseInt(p.prices.regular_price) <= parseInt(p.prices.price)) return false;
+      const percent = Math.round(((parseInt(p.prices.regular_price) - parseInt(p.prices.price)) / parseInt(p.prices.regular_price)) * 100);
+      return percent >= filters.minDiscount;
+    });
+  }
+
+  for (let [key, value] of Object.entries(filters.attributes)) {
     products = products.filter(p => {
       if (!p.attributes) return false;
       const attr = p.attributes.find(a => a.name === key);
@@ -311,31 +307,26 @@ function applyFilters() {
     });
   }
 
-  // 6. Sort Products
-  if (filterState.sort === 'price-low') {
-    products.sort((a, b) => parseInt(a.prices.price) - parseInt(b.prices.price));
-  } else if (filterState.sort === 'price-high') {
-    products.sort((a, b) => parseInt(b.prices.price) - parseInt(a.prices.price));
-  } else if (filterState.sort === 'rating') {
-    products.sort((a, b) => parseInt(b.average_rating) - parseInt(a.average_rating));
-  }
+  if (filters.sort === 'price-low') products.sort((a, b) => parseInt(a.prices.price) - parseInt(b.prices.price));
+  if (filters.sort === 'price-high') products.sort((a, b) => parseInt(b.prices.price) - parseInt(a.prices.price));
+  if (filters.sort === 'rating') products.sort((a, b) => parseInt(b.average_rating) - parseInt(a.average_rating));
 
-  // Update Active Filter Badge
-  let activeCount = (filterState.category ? 1 : 0) + (filterState.sort !== 'relevance' ? 1 : 0) + Object.keys(filterState.attributes).length;
-  if (filterState.minPrice > minProductPrice || filterState.maxPrice < maxProductPrice) activeCount++;
-  
-  const badge = document.getElementById("active-filter-count");
-  badge.style.display = activeCount > 0 ? "flex" : "none";
-  badge.textContent = activeCount;
-
-  // Render Results
-  renderSearchResultsGrid(products);
+  return products;
 }
 
 function renderSearchResultsGrid(products) {
   const grid = document.getElementById("final-results-grid");
   const wishlist = getWishlist();
   
+  // Update Badge
+  let activeCount = (appliedFilters.category ? 1 : 0) + (appliedFilters.sort !== 'relevance' ? 1 : 0) + Object.keys(appliedFilters.attributes).length;
+  if (appliedFilters.minPrice > minProductPrice || appliedFilters.maxPrice < maxProductPrice) activeCount++;
+  if (appliedFilters.minDiscount > 0) activeCount++;
+  
+  const badge = document.getElementById("active-filter-count");
+  badge.style.display = activeCount > 0 ? "flex" : "none";
+  badge.textContent = activeCount;
+
   if (!products || products.length === 0) {
     grid.innerHTML = `<div style="grid-column: span 2; text-align: center; padding: 40px;"><h3>No products found</h3><p style="color:#666; font-size:14px; margin-top:8px;">Try adjusting your filters.</p></div>`;
     return;
@@ -367,18 +358,6 @@ function renderSearchResultsGrid(products) {
       </div>
     </div>`;
   }).join("");
-}
-
-// --- FILTER BOTTOM SHEET UI ---
-function openFilterSheet() {
-  document.getElementById("filter-overlay").style.display = "block";
-  setTimeout(() => document.getElementById("filter-overlay").style.opacity = "1", 10);
-  document.getElementById("filter-sheet").style.bottom = "0";
-}
-function closeFilterSheet() {
-  document.getElementById("filter-overlay").style.opacity = "0";
-  document.getElementById("filter-sheet").style.bottom = "-100%";
-  setTimeout(() => document.getElementById("filter-overlay").style.display = "none", 300);
 }
 
 // --- OTHER PAGES ---

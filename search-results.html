@@ -9,11 +9,6 @@
   </div>
 </div>
 
-<!-- ACTIVE FILTER PILLS (Shows what is selected) -->
-<div id="active-filters-bar" style="display:none; gap: 8px; overflow-x: auto; padding: 12px 16px; border-bottom: 1px solid #f0f0f0; background: #fff; align-items: center;">
-  <!-- Populated by JS -->
-</div>
-
 <!-- FILTER CHIPS -->
 <div style="display: flex; gap: 8px; overflow-x: auto; padding: 12px 16px; border-bottom: 1px solid #f0f0f0; scrollbar-width: none;">
   <button onclick="openFilterSheet()" style="display:flex; align-items:center; gap:6px; padding: 8px 12px; border-radius: 8px; border: 1px solid #111; background: #111; color: #fff; font-size: 13px; font-weight: 500; white-space: nowrap;">
@@ -27,19 +22,40 @@
 <!-- FILTER BOTTOM SHEET (AMAZON STYLE) -->
 <div id="filter-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 999; display: none; opacity: 0; transition: opacity 0.3s;" onclick="closeFilterSheet()"></div>
 
-<div id="filter-sheet" style="position: fixed; bottom: -100%; left: 0; right: 0; background: #fff; z-index: 1000; transition: bottom 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); height: 90vh; display: flex; flex-direction: column;">
+<div id="filter-sheet" style="position: fixed; bottom: -100%; left: 0; right: 0; background: #fff; z-index: 1000; transition: bottom 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); height: 100vh; display: flex; flex-direction: column;">
+  
   <!-- Header -->
-  <div style="padding: 16px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
-    <h2 style="font-size: 18px; font-weight: 700; color: #111;">Filters</h2>
-    <i class="fa-solid fa-xmark" onclick="closeFilterSheet()" style="font-size: 20px; cursor: pointer; color: #666;"></i>
+  <div style="padding: 16px; display: flex; justify-content: space-between; align-items: center;">
+    <h2 style="font-size: 20px; font-weight: 700; color: #111;">Filters</h2>
+    <i class="fa-solid fa-xmark" onclick="closeFilterSheet()" style="font-size: 24px; cursor: pointer; color: #333;"></i>
   </div>
 
-  <!-- Scrollable Content -->
-  <div id="filter-accordion-container" style="flex: 1; overflow-y: auto; padding: 0 16px;"></div>
+  <!-- Search Filter Input -->
+  <div style="padding: 0 16px 16px;">
+    <div style="position: relative;">
+      <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #888;"></i>
+      <input type="text" placeholder="Search filters and brands" style="width: 100%; padding: 14px 14px 14px 44px; border-radius: 12px; border: 1px solid #ddd; font-size: 15px; outline: none;">
+    </div>
+  </div>
 
-  <!-- Sticky Apply Button -->
-  <div style="padding: 16px; border-top: 1px solid #eee; background: #fff; display: flex; gap: 12px;">
-    <button onclick="resetFilters()" style="flex: 1; padding: 16px; background: #fff; color: #111; border: 1px solid #ddd; border-radius: 12px; font-size: 16px; font-weight: 600;">Clear All</button>
-    <button onclick="applyFilters()" style="flex: 2; padding: 16px; background: #111; color: #fff; border: none; border-radius: 12px; font-size: 16px; font-weight: bold;">Apply</button>
+  <!-- Two-Pane Layout -->
+  <div style="flex: 1; display: flex; overflow: hidden; border-top: 1px solid #eee;">
+    
+    <!-- Left Sidebar Menu -->
+    <div id="filter-sidebar" style="width: 35%; background: #f9f9f9; overflow-y: auto; border-right: 1px solid #eee;">
+      <!-- Menu Items injected by JS -->
+    </div>
+
+    <!-- Right Content Area -->
+    <div id="filter-content" style="width: 65%; padding: 16px; overflow-y: auto;">
+      <!-- Content injected by JS -->
+    </div>
+  </div>
+
+  <!-- Sticky Bottom Bar -->
+  <div style="padding: 16px; border-top: 1px solid #eee; background: #fff; display: flex; justify-content: flex-end;">
+    <button onclick="applyFilters()" style="padding: 12px 24px; background: #FFD814; color: #111; border: 1px solid #FCD200; border-radius: 20px; font-size: 16px; font-weight: 500; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+      Show <span id="filter-result-count">0</span> results
+    </button>
   </div>
 </div>
