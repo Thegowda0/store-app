@@ -4,7 +4,6 @@ const tabbar = document.getElementById("tabbar");
 let globalProducts = [];
 let currentSearchQuery = "";
 
-// Filter State
 let appliedFilters = getEmptyFilters();
 let draftFilters = getEmptyFilters();
 let minProductPrice = 0;
@@ -13,7 +12,6 @@ let activeSidebarTab = "sort";
 let currentPage = 1;
 let paginatedCache = [];
 
-// Product Page State
 let currentProduct = null;
 let selectedAttributes = {};
 let productQty = 1;
@@ -22,7 +20,6 @@ function getEmptyFilters() {
   return { sort: "relevance", category: null, minPrice: 0, maxPrice: 10000, minDiscount: 0, attributes: {} };
 }
 
-// --- TOAST ---
 function showToast(message) {
   let toast = document.getElementById("toast");
   if (!toast) {
@@ -36,7 +33,6 @@ function showToast(message) {
   setTimeout(() => { toast.style.opacity = "0"; toast.style.transform = "translateX(-50%) translateY(20px)"; }, 2500);
 }
 
-// --- ROUTER ---
 window.addEventListener('hashchange', handleRoute);
 function handleRoute() {
   const hash = window.location.hash.replace('#', '');
@@ -72,7 +68,6 @@ async function navigate(pageId, param = null, pushHistory = true) {
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.id === pageId));
 }
 
-// --- PRODUCT DETAILS PAGE ---
 async function loadSingleProduct(id) {
   const el = document.getElementById("product-detail");
   const stickyBar = document.getElementById("product-sticky-bar");
@@ -88,13 +83,10 @@ async function loadSingleProduct(id) {
     if (!p) { const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products/${id}`); p = await res.json(); }
     currentProduct = p;
 
-    // Build Attributes UI
     let attributesHtml = "";
     if (p.attributes && p.attributes.length > 0) {
       p.attributes.forEach(attr => {
         if (attr.terms.length === 0) return;
-        
-        // Pre-select the first term (Optional, but good for UX)
         selectedAttributes[attr.name] = attr.terms[0].name;
         
         attributesHtml += `
@@ -114,7 +106,6 @@ async function loadSingleProduct(id) {
       });
     }
 
-    // Build Full HTML
     el.innerHTML = `
       <div style="position: relative;">
         <i class="fa-solid fa-arrow-left" onclick="history.back()" style="position: absolute; top: 16px; left: 16px; font-size: 20px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 50%; cursor: pointer; z-index: 10;"></i>
@@ -132,32 +123,22 @@ async function loadSingleProduct(id) {
         ${attributesHtml}
       </div>
     `;
-    
     stickyBar.style.display = "block";
-
   } catch(e) { 
     el.innerHTML = "<p style='padding:16px;'>Error loading product.</p>"; 
-    console.log(e);
   }
 }
 
 function selectAttribute(attrName, termName) {
   selectedAttributes[attrName] = termName;
-  
-  // Update UI colors
   const container = document.getElementById("product-detail");
   const pills = container.querySelectorAll(`[id^="attr-${attrName.replace(/\s/g, '')}-"]`);
   
   pills.forEach(pill => {
-    // Check if this pill is the selected one
     if (pill.id === `attr-${attrName.replace(/\s/g, '')}-${termName.replace(/\s/g, '')}`) {
-      pill.style.border = "1px solid #111";
-      pill.style.background = "#111";
-      pill.style.color = "#fff";
+      pill.style.border = "1px solid #111"; pill.style.background = "#111"; pill.style.color = "#fff";
     } else {
-      pill.style.border = "1px solid #ddd";
-      pill.style.background = "#fff";
-      pill.style.color = "#333";
+      pill.style.border = "1px solid #ddd"; pill.style.background = "#fff"; pill.style.color = "#333";
     }
   });
 }
@@ -170,44 +151,27 @@ function changeProductQty(change) {
 
 function handleAddToCart() {
   if (!currentProduct) return;
-  
-  // If the product has attributes, ensure they are all selected (they are pre-selected, but good safety)
   if (currentProduct.attributes && currentProduct.attributes.length > 0) {
     for (let attr of currentProduct.attributes) {
-      if (!selectedAttributes[attr.name]) {
-        showToast(`Please select ${attr.name}`);
-        return;
-      }
+      if (!selectedAttributes[attr.name]) { showToast(`Please select ${attr.name}`); return; }
     }
   }
 
-  // Create a unique name based on attributes for the cart (e.g. "T-Shirt (Red, Large)")
   let attributesString = Object.values(selectedAttributes).join(", ");
   let cartName = currentProduct.name;
-  if (attributesString) {
-    cartName += ` (${attributesString})`;
-  }
+  if (attributesString) cartName += ` (${attributesString})`;
 
   addToCart(currentProduct.id, cartName, currentProduct.prices.price, currentProduct.images[0]?.thumbnail || '', productQty);
 }
 
-// --- CART LOGIC ---
 function getCart() { return JSON.parse(localStorage.getItem("native_cart") || "[]"); }
 function saveCart(cart) { localStorage.setItem("native_cart", JSON.stringify(cart)); updateCartBadge(); }
 
 function addToCart(id, name, price, image, qty = 1) {
   let cart = getCart();
-  // Check if item with same ID AND same name (attributes) already exists
   let existing = cart.find(item => item.id === id && item.name === name);
-  
-  if (existing) { 
-    existing.qty += qty; 
-  } else { 
-    cart.push({ id, name, price: parseFloat(price), image, qty: qty }); 
-  }
-  
-  saveCart(cart); 
-  showToast(`✓ Added ${qty} to Cart`);
+  if (existing) { existing.qty += qty; } else { cart.push({ id, name, price: parseFloat(price), image, qty: qty }); }
+  saveCart(cart); showToast(`✓ Added ${qty} to Cart`);
 }
 
 function updateCartBadge() {
@@ -220,7 +184,6 @@ function updateCartBadge() {
   }
 }
 
-// --- OTHER PAGES (Preserved from previous logic) ---
 async function loadProducts(containerId) {
   const el = document.getElementById(containerId); if (!el) return;
   if (globalProducts.length > 0) { renderProductGrid(containerId, globalProducts); return; }
@@ -238,16 +201,20 @@ function renderCart() {
   const cart = getCart(); const el = document.getElementById("cart-items"); const summary = document.getElementById("cart-summary");
   if (cart.length === 0) { el.innerHTML = "<div style='text-align:center; padding:40px 16px;'><i class='fa-solid fa-cart-shopping' style='font-size:48px; color:#ccc; margin-bottom:16px;'></i><h2>Your cart is empty</h2><p style='color:#666; margin-top:8px;'>Looks like you haven't added anything yet.</p></div>"; summary.style.display = "none"; return; }
   let total = 0;
-  el.innerHTML = cart.map(item => {
+  el.innerHTML = cart.map((item, index) => {
     total += (item.price * item.qty); let displayPrice = (item.price / 100).toFixed(2); let totalForItem = ((item.price * item.qty) / 100).toFixed(2);
-    return `<div style="display:flex; gap:12px; padding:16px; border-bottom:1px solid #eee; align-items:center;"><img src="${item.image}" style="width:64px; height:64px; border-radius:8px; object-fit:cover;"><div style="flex:1;"><h3 style="font-size:14px; margin-bottom:4px;">${item.name}</h3><div style="color:#666; font-size:13px;">$${displayPrice}</div></div><div style="display:flex; align-items:center; gap:12px; background:#f5f5f5; padding:4px 12px; border-radius:20px;"><button onclick="changeQty(${item.id}, -1)" style="border:none; background:none; font-size:16px; cursor:pointer;">-</button><span style="font-size:14px; font-weight:600;">${item.qty}</span><button onclick="changeQty(${item.id}, 1)" style="border:none; background:none; font-size:16px; cursor:pointer;">+</button></div><div style="font-weight:700; font-size:14px; width:50px; text-align:right;">$${totalForItem}</div></div>`;
+    return `<div style="display:flex; gap:12px; padding:16px; border-bottom:1px solid #eee; align-items:center;"><img src="${item.image}" style="width:64px; height:64px; border-radius:8px; object-fit:cover;"><div style="flex:1;"><h3 style="font-size:14px; margin-bottom:4px;">${item.name}</h3><div style="color:#666; font-size:13px;">$${displayPrice}</div></div><div style="display:flex; align-items:center; gap:12px; background:#f5f5f5; padding:4px 12px; border-radius:20px;"><button onclick="changeQty(${index}, -1)" style="border:none; background:none; font-size:16px; cursor:pointer;">-</button><span style="font-size:14px; font-weight:600;">${item.qty}</span><button onclick="changeQty(${index}, 1)" style="border:none; background:none; font-size:16px; cursor:pointer;">+</button></div><div style="font-weight:700; font-size:14px; width:50px; text-align:right;">$${totalForItem}</div></div>`;
   }).join("");
   document.getElementById("cart-total").textContent = `$${(total / 100).toFixed(2)}`; summary.style.display = "block";
 }
 
-function changeQty(id, change) {
-  let cart = getCart(); let item = cart.find(i => i.id === id); // Note: this is basic, if you have multiple attributes, you might need a unique cart line ID.
-  if (item) { item.qty += change; if (item.qty <= 0) cart = cart.filter(i => i.id !== id); saveCart(cart); renderCart(); }
+function changeQty(index, change) {
+  let cart = getCart(); 
+  if (cart[index]) {
+    cart[index].qty += change; 
+    if (cart[index].qty <= 0) cart.splice(index, 1); 
+    saveCart(cart); renderCart(); 
+  }
 }
 
 function checkout() { navigate("checkout"); }
