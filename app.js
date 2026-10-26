@@ -397,39 +397,73 @@ async function loadReviewsCarousel(productId) {
   var el = document.getElementById("reviews-carousel");
   var dots = document.getElementById("carousel-dots");
   var headingCount = document.getElementById("reviews-heading-count");
-  if (!el) return;
+
+  console.log("[REVIEWS] loadReviewsCarousel called with productId =", productId);
+  console.log("[REVIEWS] el found:", !!el, "dots:", !!dots, "heading:", !!headingCount);
+
+  if (!el) {
+    console.log("[REVIEWS] ABORT: #reviews-carousel not in DOM");
+    return;
+  }
+
+  el.innerHTML = '<p style="color:#888;padding:20px 0;">Loading reviews...</p>';
 
   var reviews = [];
+  var fetchUrl = APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/reviews?product_id=" + productId + "&per_page=100&order=desc&orderby=date";
+  console.log("[REVIEWS] fetching:", fetchUrl);
 
   try {
-    var wcRes = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/reviews?product_id=" + productId + "&per_page=100&order=desc&orderby=date");
-    if (wcRes.ok) {
-      var wcData = await wcRes.json();
-      if (Array.isArray(wcData)) {
-        reviews = wcData.map(function(r) {
-          return {
-            name: r.reviewer || "Anonymous",
-            text: (r.review || "").replace(/<[^>]*>/g, "").trim(),
-            rating: parseInt(r.rating) || 5,
-            avatar: r.reviewer_avatar_urls ? (r.reviewer_avatar_urls["48"] || "") : "",
-            date: r.date_created || ""
-          };
-        });
-      }
+    var res = await fetch(fetchUrl);
+    console.log("[REVIEWS] HTTP status:", res.status, res.statusText);
+    if (!res.ok) {
+      el.innerHTML = '<p style="color:#d33;padding:20px 0;">HTTP ' + res.status + " - " + res.statusText + '</p>';
+      if (headingCount) headingCount.textContent = "(0)";
+      return;
     }
-  } catch(e) { console.log("WC carousel reviews failed:", e); }
+    var data = await res.json();
+    console.log("[REVIEWS] JSON type:", Array.isArray(data) ? "array[" + data.length + "]" : typeof data);
+    console.log("[REVIEWS] first item:", data && data[0] ? data[0].reviewer + " / rating " + data[0].rating : "none");
+
+    if (Array.isArray(data)) {
+      reviews = data.map(function(r) {
+        return {
+          name: r.reviewer || "Anonymous",
+          text: (r.review || "").replace(/<[^>]*>/g, "").trim(),
+          rating: parseInt(r.rating) || 5,
+          avatar: r.reviewer_avatar_urls ? (r.reviewer_avatar_urls["48"] || "") : "",
+          date: r.date_created || ""
+        };
+      });
+    }
+  } catch(err) {
+    console.log("[REVIEWS] FETCH THREW:", err);
+    el.innerHTML = '<p style="color:#d33;padding:20px 0;">Fetch failed: ' + err.message + '</p>';
+    if (headingCount) headingCount.textContent = "(0)";
+    return;
+  }
 
   if (reviews.length === 0) {
+    console.log("[REVIEWS] no reviews returned");
     if (headingCount) headingCount.textContent = "(0)";
     el.innerHTML = '<p style="color:#888;padding:20px 0;">No reviews yet - be the first to review this product.</p>';
     if (dots) dots.innerHTML = "";
     return;
   }
 
+  console.log("[REVIEWS] rendering", reviews.length, "reviews");
   if (headingCount) headingCount.textContent = "(" + reviews.length + ")";
   _carouselData = reviews;
   _carouselIndex = 0;
-  renderCarouselSlide();
+
+  try {
+    renderCarouselSlide();
+    console.log("[REVIEWS] slide rendered OK");
+  } catch(e) {
+    console.log("[REVIEWS] renderCarouselSlide THREW:", e);
+    el.innerHTML = '<p style="color:#d33;padding:20px 0;">Render error: ' + e.message + '</p>';
+    return;
+  }
+
   if (_carouselTimer) clearInterval(_carouselTimer);
   _carouselTimer = setInterval(function() {
     if (_carouselData.length < 2) return;
