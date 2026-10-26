@@ -40,7 +40,7 @@ async function loadProducts(containerId) {
 
   try {
     // FIXED URL: Added /v1/
-const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(APP_CONFIG.siteUrl + '/wp-json/wc/store/v1/products?per_page=20')}`);
+const res = await fetch(`${APP_CONFIG.siteUrl}'/wp-json/wc/store/v1/products?per_page=20`);`);
     const products = await res.json();
     
     el.innerHTML = products.map(p => `
@@ -62,7 +62,7 @@ async function loadSingleProduct(id) {
 
   try {
     // FIXED URL: Added /v1/
-    const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(APP_CONFIG.siteUrl + '/wp-json/wc/store/v1/products/' + id)}`);
+    const res = await fetch(`${APP_CONFIG.siteUrl}'/wp-json/wc/store/v1/products/${id}`);`);
     const p = await res.json();
     
     el.innerHTML = `
