@@ -3,7 +3,7 @@ const tabbar = document.getElementById("tabbar");
 
 let globalProducts = [];
 let currentSearchQuery = "";
-let currentFilteredProducts = []; // Holds results for sorting
+let currentFilteredProducts = [];
 
 // --- TOAST ---
 function showToast(message) {
@@ -17,6 +17,47 @@ function showToast(message) {
   toast.textContent = message;
   setTimeout(() => { toast.style.opacity = "1"; toast.style.transform = "translateX(-50%) translateY(0)"; }, 10);
   setTimeout(() => { toast.style.opacity = "0"; toast.style.transform = "translateX(-50%) translateY(20px)"; }, 2500);
+}
+
+// --- WISHLIST LOGIC ---
+function getWishlist() { return JSON.parse(localStorage.getItem("native_wishlist") || "[]"); }
+function saveWishlist(w) { localStorage.setItem("native_wishlist", JSON.stringify(w)); }
+
+function toggleWishlist(id, name, price, image) {
+  let w = getWishlist();
+  let exists = w.find(item => item.id === id);
+  
+  if (exists) {
+    w = w.filter(item => item.id !== id);
+    showToast("Removed from Wishlist");
+  } else {
+    w.push({ id, name, price: parseFloat(price), image });
+    showToast("✓ Added to Wishlist");
+  }
+  saveWishlist(w);
+  
+  // Refresh UI if on results page
+  if (window.location.hash === "#search-results") renderSearchResultsGrid();
+  if (window.location.hash === "#wishlist") renderWishlistPage();
+}
+
+function renderWishlistPage() {
+  const w = getWishlist();
+  const grid = document.getElementById("wishlist-grid");
+  
+  if (w.length === 0) {
+    grid.innerHTML = "<div style='grid-column: span 2; text-align: center; padding: 40px;'><i class='fa-regular fa-heart' style='font-size:48px; color:#ccc; margin-bottom:16px;'></i><h3>Your wishlist is empty</h3></div>";
+    return;
+  }
+  
+  grid.innerHTML = w.map(p => `
+    <div class="card" onclick="navigate('product', ${p.id})">
+      <img src="${p.image}" loading="lazy">
+      <div style="padding: 8px 12px;">
+        <h3>${p.name}</h3>
+      </div>
+    </div>
+  `).join("");
 }
 
 // --- BUILD TAB BAR ---
@@ -55,12 +96,12 @@ async function navigate(pageId, param = null, pushHistory = true) {
       if (pageId === "shop") loadProducts("product-list");
       if (pageId === "search") initSearchPage();
       if (pageId === "search-results") initSearchResultsPage();
+      if (pageId === "wishlist") renderWishlistPage();
       if (pageId === "product" && param) loadSingleProduct(param);
       if (pageId === "cart") renderCart();
     } catch (e) {
       container.innerHTML = `<p style="padding:20px;">Error loading page: ${pageId}</p>`;
     }
-    
   } else {
     const path = APP_CONFIG.webviewRoutes[pageId] || "/" + pageId;
     container.innerHTML = `<iframe src="${APP_CONFIG.siteUrl}${path}"
@@ -184,16 +225,38 @@ function initSearchResultsPage() {
 function sortProducts(type) {
   if (type === 'price-low') {
     currentFilteredProducts.sort((a, b) => parseInt(a.prices.price) - parseInt(b.prices.price));
-    showToast("Sorted by: Price Low to High");
   } else if (type === 'price-high') {
     currentFilteredProducts.sort((a, b) => parseInt(b.prices.price) - parseInt(a.prices.price));
-    showToast("Sorted by: Price High to Low");
+  } else {
+    // Relevance (default)
+    currentFilteredProducts.sort((a, b) => a.id - b.id);
   }
+  
+  // Update checkmarks
+  document.getElementById("check-relevance").style.display = type === 'relevance' ? "block" : "none";
+  document.getElementById("check-price-low").style.display = type === 'price-low' ? "block" : "none";
+  document.getElementById("check-price-high").style.display = type === 'price-high' ? "block" : "none";
+  
   renderSearchResultsGrid();
+  closeFilterSheet();
+}
+
+// --- FILTER BOTTOM SHEET ---
+function openFilterSheet() {
+  document.getElementById("filter-overlay").style.display = "block";
+  setTimeout(() => document.getElementById("filter-overlay").style.opacity = "1", 10);
+  document.getElementById("filter-sheet").style.bottom = "0";
+}
+
+function closeFilterSheet() {
+  document.getElementById("filter-overlay").style.opacity = "0";
+  document.getElementById("filter-sheet").style.bottom = "-100%";
+  setTimeout(() => document.getElementById("filter-overlay").style.display = "none", 300);
 }
 
 function renderSearchResultsGrid() {
   const grid = document.getElementById("final-results-grid");
+  const wishlist = getWishlist();
   
   if (currentFilteredProducts.length === 0) {
     grid.innerHTML = `<div style="grid-column: span 2; text-align: center; padding: 40px;"><h3>No results found</h3></div>`;
@@ -208,12 +271,16 @@ function renderSearchResultsGrid() {
       const percent = Math.round(((reg - sale) / reg) * 100);
       discountTag = `<div style="background: #FFD700; color: #111; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 4px;">${percent}% OFF</div>`;
     }
+    
+    const isSaved = wishlist.some(item => item.id === p.id);
+    const heartColor = isSaved ? "#FF4B2B" : "#aaa";
+    const heartIcon = isSaved ? "fa-solid fa-heart" : "fa-regular fa-heart";
 
     return `
     <div style="background: #fff; border-radius: 12px; padding: 12px; position: relative; box-shadow: 0 2px 8px rgba(0,0,0,0.04); cursor: pointer;" onclick="navigate('product', ${p.id})">
       
-      <button onclick="event.stopPropagation(); showToast('Added to Wishlist ❤️')" style="position: absolute; top: 12px; right: 12px; background: none; border: none; z-index: 2;">
-        <i class="fa-regular fa-heart" style="font-size: 18px; color: #aaa;"></i>
+      <button onclick="event.stopPropagation(); toggleWishlist(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.prices.price}, '${p.images[0]?.thumbnail || ''}')" style="position: absolute; top: 12px; right: 12px; background: none; border: none; z-index: 2;">
+        <i class="${heartIcon}" style="font-size: 18px; color: ${heartColor};"></i>
       </button>
 
       <img src="${p.images[0]?.thumbnail || ''}" style="width: 100%; aspect-ratio: 1/1; object-fit: contain; margin-bottom: 8px;">
