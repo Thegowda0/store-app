@@ -1,2 +1,9 @@
-<h2 style="padding:16px;">Shop</h2>
-<div class="grid" id="product-list"></div>
+<div style="padding: 16px 16px 0;">
+  <div style="position: relative;">
+    <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #888;"></i>
+    <input type="text" id="search-input" placeholder="Search products..." oninput="filterProducts()" 
+      style="width: 100%; padding: 14px 14px 14px 44px; border-radius: 12px; border: 1px solid #ddd; font-size: 15px; outline: none; background: #fff;">
+  </div>
+</div>
+
+<div class="grid" id="product-list" style="margin-top: 16px;"></div>

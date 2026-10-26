@@ -1,6 +1,8 @@
 const container = document.getElementById("page-container");
 const tabbar = document.getElementById("tabbar");
 
+let globalProducts = []; // Store products for search
+
 // --- TOAST ---
 function showToast(message) {
   let toast = document.getElementById("toast");
@@ -21,49 +23,33 @@ APP_CONFIG.tabs.forEach(tab => {
   btn.className = "tab";
   btn.dataset.id = tab.id;
   btn.innerHTML = `<span>${tab.icon}</span><small>${tab.label}</small>`;
-  // Instead of navigate, we push a new history state for tabs
   btn.onclick = () => { window.location.hash = tab.page === 'home' ? '' : tab.page; };
   tabbar.appendChild(btn);
 });
 
 // --- HISTORY ROUTER ---
-// This handles both clicks and the phone's back button
 window.addEventListener('hashchange', handleRoute);
 
 function handleRoute() {
   const hash = window.location.hash.replace('#', '');
   
   if (!hash) {
-    // Default to home if no hash
-    if (!window.location.hash) {
-      navigate("home", null, false); // false = don't push history again
-    } else {
-      navigate(hash, null, false);
-    }
+    navigate("home", null, false);
   } else if (hash.startsWith('product-')) {
     const id = hash.split('-')[1];
     navigate("product", id, false);
-  } else if (APP_CONFIG.webviewRoutes[hash]) {
-    navigate(hash, null, false);
   } else {
     navigate(hash, null, false);
   }
 }
 
-// The actual router function
 async function navigate(pageId, param = null, pushHistory = true) {
-  // 1. Update the URL History
   if (pushHistory) {
-    if (pageId === "home") {
-      history.pushState(null, "", window.location.pathname);
-    } else if (pageId === "product") {
-      history.pushState(null, "", `#product-${param}`);
-    } else {
-      history.pushState(null, "", `#${pageId}`);
-    }
+    if (pageId === "home") history.pushState(null, "", window.location.pathname);
+    else if (pageId === "product") history.pushState(null, "", `#product-${param}`);
+    else history.pushState(null, "", `#${pageId}`);
   }
 
-  // 2. Load the page content
   if (APP_CONFIG.nativePages[pageId]) {
     const res = await fetch(APP_CONFIG.nativePages[pageId]);
     container.innerHTML = await res.text();
@@ -79,30 +65,53 @@ async function navigate(pageId, param = null, pushHistory = true) {
       style="width:100%;height:100%;border:0;position:absolute;top:0;left:0;bottom:60px;"></iframe>`;
   }
   
-  // 3. Update tab active state
   document.querySelectorAll(".tab").forEach(t =>
     t.classList.toggle("active", t.dataset.id === pageId));
 }
 
-// --- PRODUCTS ---
+// --- PRODUCTS & SEARCH ---
 async function loadProducts(containerId) {
   const el = document.getElementById(containerId);
   if (!el) return;
+  
+  // If we already loaded products, just render them (faster navigation)
+  if (globalProducts.length > 0) {
+    renderProductGrid(containerId, globalProducts);
+    return;
+  }
+
   el.innerHTML = "<p style='padding:16px;'>Loading products...</p>";
 
   try {
-    const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products?per_page=20`);
-    const products = await res.json();
-    
-    el.innerHTML = products.map(p => `
-      <div class="card" onclick="navigate('product', ${p.id})">
-        <img src="${p.images[0]?.thumbnail || ''}" loading="lazy" alt="${p.name}">
-        <h3>${p.name}</h3>
-        <div class="price">${p.price_html}</div>
-      </div>`).join("");
+    const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products?per_page=50`);
+    globalProducts = await res.json(); // Save globally
+    renderProductGrid(containerId, globalProducts);
   } catch(e) { 
     el.innerHTML = "<p style='padding:16px;'>Error loading products.</p>";
   }
+}
+
+function renderProductGrid(containerId, products) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  
+  if (products.length === 0) {
+    el.innerHTML = "<p style='padding:32px 16px; text-align:center; color:#666; grid-column: span 2;'>No products found.</p>";
+    return;
+  }
+
+  el.innerHTML = products.map(p => `
+    <div class="card" onclick="navigate('product', ${p.id})">
+      <img src="${p.images[0]?.thumbnail || ''}" loading="lazy" alt="${p.name}">
+      <h3>${p.name}</h3>
+      <div class="price">${p.price_html}</div>
+    </div>`).join("");
+}
+
+function filterProducts() {
+  const query = document.getElementById("search-input").value.toLowerCase();
+  const filtered = globalProducts.filter(p => p.name.toLowerCase().includes(query));
+  renderProductGrid("product-list", filtered);
 }
 
 async function loadSingleProduct(id) {
@@ -110,8 +119,12 @@ async function loadSingleProduct(id) {
   el.innerHTML = "<p style='padding:16px;'>Loading product...</p>";
 
   try {
-    const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products/${id}`);
-    const p = await res.json();
+    // Find product in global memory first to avoid API call
+    let p = globalProducts.find(item => item.id == id);
+    if (!p) {
+      const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products/${id}`);
+      p = await res.json();
+    }
     
     el.innerHTML = `
       <div style="padding-bottom: 80px;">
@@ -215,10 +228,9 @@ function changeQty(id, change) {
 }
 
 function checkout() {
-  // Send the user to the native WebView checkout page
   navigate("checkout");
 }
 
 // --- INITIAL LOAD ---
 updateCartBadge();
-handleRoute(); // Load the correct page based on URL
+handleRoute();
