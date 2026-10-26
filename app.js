@@ -5,9 +5,14 @@ let globalProducts = [];
 let currentSearchQuery = "";
 
 // Filter State
-let selectedCategory = null;
-let selectedBrand = null;
-let selectedSort = "relevance";
+let filterState = {
+  sort: "relevance",
+  category: null,
+  brand: null,
+  minPrice: "",
+  maxPrice: "",
+  attributes: {} // e.g. { "Color": "Blue", "Size": "L" }
+};
 
 // --- TOAST ---
 function showToast(message) {
@@ -21,35 +26,6 @@ function showToast(message) {
   toast.textContent = message;
   setTimeout(() => { toast.style.opacity = "1"; toast.style.transform = "translateX(-50%) translateY(0)"; }, 10);
   setTimeout(() => { toast.style.opacity = "0"; toast.style.transform = "translateX(-50%) translateY(20px)"; }, 2500);
-}
-
-// --- WISHLIST LOGIC ---
-function getWishlist() { return JSON.parse(localStorage.getItem("native_wishlist") || "[]"); }
-function saveWishlist(w) { localStorage.setItem("native_wishlist", JSON.stringify(w)); }
-
-function toggleWishlist(id, name, price, image) {
-  let w = getWishlist();
-  let exists = w.find(item => item.id === id);
-  if (exists) { w = w.filter(item => item.id !== id); showToast("Removed from Wishlist"); } 
-  else { w.push({ id, name, price: parseFloat(price), image }); showToast("✓ Added to Wishlist"); }
-  saveWishlist(w);
-  if (window.location.hash === "#search-results") applyFilters();
-  if (window.location.hash === "#wishlist") renderWishlistPage();
-}
-
-function renderWishlistPage() {
-  const w = getWishlist();
-  const grid = document.getElementById("wishlist-grid");
-  if (w.length === 0) {
-    grid.innerHTML = "<div style='grid-column: span 2; text-align: center; padding: 40px;'><i class='fa-regular fa-heart' style='font-size:48px; color:#ccc; margin-bottom:16px;'></i><h3>Your wishlist is empty</h3></div>";
-    return;
-  }
-  grid.innerHTML = w.map(p => `
-    <div class="card" onclick="navigate('product', ${p.id})">
-      <img src="${p.image}" loading="lazy">
-      <div style="padding: 8px 12px;"><h3>${p.name}</h3></div>
-    </div>
-  `).join("");
 }
 
 // --- ROUTER ---
@@ -151,78 +127,166 @@ function executeSearch() {
   `).join("");
 }
 
-function goToSearchResults() { saveSearchHistory(currentSearchQuery); navigate('search-results'); }
+function goToSearchResults() { 
+  saveSearchHistory(currentSearchQuery); 
+  // RESET FILTERS ON NEW SEARCH
+  resetFilters(false); 
+  navigate('search-results'); 
+}
 
-// --- DYNAMIC FILTER & SORT LOGIC ---
-function initSearchResultsPage() {
+// --- DYNAMIC FILTER LOGIC ---
+async function initSearchResultsPage() {
   document.getElementById("results-search-label").textContent = currentSearchQuery || "All Products";
-  
-  // 1. Populate Sort Options
-  const sorts = [
-    { id: 'relevance', label: 'Relevance' },
-    { id: 'price-low', label: 'Price: Low to High' },
-    { id: 'price-high', label: 'Price: High to Low' },
-    { id: 'newest', label: 'Newest Arrivals' }
-  ];
-  document.getElementById("sort-options").innerHTML = sorts.map(s => `
-    <div onclick="setFilter('sort', '${s.id}')" style="padding: 8px 16px; border-radius: 20px; border: 1px solid ${selectedSort === s.id ? '#111' : '#ddd'}; background: ${selectedSort === s.id ? '#111' : '#fff'}; color: ${selectedSort === s.id ? '#fff' : '#333'}; font-size: 13px; cursor: pointer;">${s.label}</div>
-  `).join("");
-
-  // 2. Populate Categories dynamically from products
-  const cats = [...new Set(globalProducts.flatMap(p => p.categories.map(c => c.name)))];
-  document.getElementById("category-options").innerHTML = cats.map(c => `
-    <div onclick="setFilter('category', '${c}')" style="padding: 8px 16px; border-radius: 20px; border: 1px solid ${selectedCategory === c ? '#111' : '#ddd'}; background: ${selectedCategory === c ? '#111' : '#fff'}; color: ${selectedCategory === c ? '#fff' : '#333'}; font-size: 13px; cursor: pointer;">${c}</div>
-  `).join("");
-
-  // 3. Populate Brands dynamically (if you have a brands plugin)
-  const brands = [...new Set(globalProducts.flatMap(p => p.brands?.map(b => b.name) || []))];
-  if (brands.length > 0) {
-    document.getElementById("brand-options").innerHTML = brands.map(b => `
-      <div onclick="setFilter('brand', '${b}')" style="padding: 8px 16px; border-radius: 20px; border: 1px solid ${selectedBrand === b ? '#111' : '#ddd'}; background: ${selectedBrand === b ? '#111' : '#fff'}; color: ${selectedBrand === b ? '#fff' : '#333'}; font-size: 13px; cursor: pointer;">${b}</div>
-    `).join("");
-  } else {
-    document.getElementById("brand-options").innerHTML = `<span style="font-size:13px; color:#666;">No brands found on products.</span>`;
-  }
-
-  // 4. Fetch actual products based on current filters
+  await buildDynamicFilterUI();
   applyFilters();
 }
 
-function setFilter(type, value) {
-  if (type === 'sort') selectedSort = selectedSort === value ? 'relevance' : value;
-  if (type === 'category') selectedCategory = selectedCategory === value ? null : value;
-  if (type === 'brand') selectedBrand = selectedBrand === value ? null : value;
-  
-  initSearchResultsPage(); // Re-render the pills to show active state
+async function buildDynamicFilterUI() {
+  const container = document.getElementById("filter-accordion-container");
+  container.innerHTML = "<p>Loading filters...</p>";
+
+  // 1. Fetch Attributes from API
+  let attributes = [];
+  try {
+    const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products/attributes`);
+    attributes = await res.json();
+  } catch(e) { console.log("Could not load attributes"); }
+
+  // 2. Fetch Categories
+  const cats = [...new Set(globalProducts.flatMap(p => p.categories.map(c => c.name)))];
+
+  // 3. Build HTML
+  let html = "";
+
+  // --- Sort Accordion ---
+  html += createAccordion("sort", "Sort By", `
+    <div style="display:flex; flex-direction:column; gap:12px;">
+      ${['relevance', 'price-low', 'price-high', 'newest', 'rating'].map(s => `
+        <label style="display:flex; align-items:center; gap:8px; font-size:14px;">
+          <input type="radio" name="sort" value="${s}" ${filterState.sort === s ? 'checked' : ''} onchange="filterState.sort='${s}'">
+          ${s === 'price-low' ? 'Price: Low to High' : s === 'price-high' ? 'Price: High to Low' : s === 'rating' ? 'Customer Rating' : s === 'newest' ? 'Newest Arrivals' : 'Relevance'}
+        </label>
+      `).join('')}
+    </div>
+  `);
+
+  // --- Price Accordion ---
+  html += createAccordion("price", "Price Range", `
+    <div style="display:flex; gap:12px; align-items:center;">
+      <input type="number" placeholder="Min" value="${filterState.minPrice}" oninput="filterState.minPrice=this.value" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:8px;">
+      <span>-</span>
+      <input type="number" placeholder="Max" value="${filterState.maxPrice}" oninput="filterState.maxPrice=this.value" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:8px;">
+    </div>
+  `);
+
+  // --- Categories Accordion ---
+  html += createAccordion("category", "Categories", `
+    <div style="display:flex; flex-wrap:wrap; gap:8px;">
+      ${cats.map(c => `
+        <div onclick="toggleFilterPill('category', '${c}')" style="padding: 8px 16px; border-radius: 20px; border: 1px solid ${filterState.category === c ? '#111' : '#ddd'}; background: ${filterState.category === c ? '#111' : '#fff'}; color: ${filterState.category === c ? '#fff' : '#333'}; font-size: 13px; cursor: pointer;">${c}</div>
+      `).join('')}
+    </div>
+  `);
+
+  // --- DYNAMIC Attributes Accordions (Color, Size, etc.) ---
+  for (let attr of attributes) {
+    // Only show if the current loaded products actually have this attribute
+    const hasAttribute = globalProducts.some(p => p.attributes?.some(a => a.name === attr.name));
+    if (!hasAttribute) continue;
+
+    // Get all terms for this attribute
+    const terms = [...new Set(globalProducts.flatMap(p => p.attributes?.filter(a => a.name === attr.name).flatMap(a => a.terms.map(t => t.name)) || []))];
+    
+    html += createAccordion(`attr-${attr.id}`, attr.name, `
+      <div style="display:flex; flex-wrap:wrap; gap:8px;">
+        ${terms.map(t => `
+          <div onclick="toggleFilterPill('${attr.name}', '${t}')" style="padding: 8px 16px; border-radius: 20px; border: 1px solid ${filterState.attributes[attr.name] === t ? '#111' : '#ddd'}; background: ${filterState.attributes[attr.name] === t ? '#111' : '#fff'}; color: ${filterState.attributes[attr.name] === t ? '#fff' : '#333'}; font-size: 13px; cursor: pointer;">${t}</div>
+        `).join('')}
+      </div>
+    `);
+  }
+
+  container.innerHTML = html;
 }
 
-function resetFilters() {
-  selectedCategory = null; selectedBrand = null; selectedSort = "relevance";
-  initSearchResultsPage();
+// Accordion HTML Generator
+function createAccordion(id, title, content) {
+  return `
+    <div style="border-bottom: 1px solid #eee; padding: 16px 0;">
+      <div onclick="toggleAccordion('${id}')" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+        <h3 style="font-size: 15px; font-weight: 700;">${title}</h3>
+        <i class="fa-solid fa-chevron-down" id="icon-${id}" style="transition: 0.3s;"></i>
+      </div>
+      <div id="accordion-${id}" style="display: none; padding-top: 16px;">
+        ${content}
+      </div>
+    </div>
+  `;
 }
 
+function toggleAccordion(id) {
+  const el = document.getElementById(`accordion-${id}`);
+  const icon = document.getElementById(`icon-${id}`);
+  if (el.style.display === "none") {
+    el.style.display = "block";
+    icon.style.transform = "rotate(180deg)";
+  } else {
+    el.style.display = "none";
+    icon.style.transform = "rotate(0deg)";
+  }
+}
+
+function toggleFilterPill(type, value) {
+  if (type === 'category') {
+    filterState.category = filterState.category === value ? null : value;
+  } else {
+    // It's an attribute (like Color)
+    if (filterState.attributes[type] === value) delete filterState.attributes[type];
+    else filterState.attributes[type] = value;
+  }
+  buildDynamicFilterUI(); // Re-render to show active state
+}
+
+function resetFilters(rerender = true) {
+  filterState = { sort: "relevance", category: null, brand: null, minPrice: "", maxPrice: "", attributes: {} };
+  if (rerender) {
+    buildDynamicFilterUI();
+    applyFilters();
+  }
+}
+
+// --- EXECUTE API QUERY ---
 async function applyFilters() {
   const grid = document.getElementById("final-results-grid");
   grid.innerHTML = "<p style='padding:16px; grid-column:span 2; text-align:center;'>Fetching products...</p>";
   
-  // Build the WooCommerce API URL
   let url = `${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products?per_page=50`;
   
   if (currentSearchQuery) url += `&search=${encodeURIComponent(currentSearchQuery)}`;
-  if (selectedCategory) url += `&category=${encodeURIComponent(selectedCategory)}`;
-  if (selectedBrand) url += `&brand=${encodeURIComponent(selectedBrand)}`;
+  if (filterState.category) url += `&category=${encodeURIComponent(filterState.category)}`;
+  if (filterState.minPrice) url += `&min_price=${filterState.minPrice}`;
+  if (filterState.maxPrice) url += `&max_price=${filterState.maxPrice}`;
   
-  // WooCommerce sorting params
-  if (selectedSort === 'price-low') url += `&orderby=price&order=asc`;
-  if (selectedSort === 'price-high') url += `&orderby=price&order=desc`;
-  if (selectedSort === 'newest') url += `&orderby=date&order=desc`;
+  if (filterState.sort === 'price-low') url += `&orderby=price&order=asc`;
+  if (filterState.sort === 'price-high') url += `&orderby=price&order=desc`;
+  if (filterState.sort === 'newest') url += `&orderby=date&order=desc`;
+  if (filterState.sort === 'rating') url += `&orderby=rating&order=desc`;
+
+  // Add Attributes to URL (WooCommerce handles this natively)
+  let attrIndex = 0;
+  for (let [key, value] of Object.entries(filterState.attributes)) {
+    url += `&attributes[${attrIndex}].attribute=${encodeURIComponent(key)}&attributes[${attrIndex}].term=${encodeURIComponent(value)}`;
+    attrIndex++;
+  }
 
   try {
     const res = await fetch(url);
     const products = await res.json();
     
     // Update Badge
-    let activeCount = (selectedCategory ? 1 : 0) + (selectedBrand ? 1 : 0) + (selectedSort !== 'relevance' ? 1 : 0);
+    let activeCount = (filterState.category ? 1 : 0) + (filterState.sort !== 'relevance' ? 1 : 0) + Object.keys(filterState.attributes).length;
+    if (filterState.minPrice || filterState.maxPrice) activeCount++;
+    
     const badge = document.getElementById("active-filter-count");
     badge.style.display = activeCount > 0 ? "flex" : "none";
     badge.textContent = activeCount;
@@ -235,6 +299,19 @@ async function applyFilters() {
   }
 }
 
+// --- FILTER BOTTOM SHEET UI ---
+function openFilterSheet() {
+  document.getElementById("filter-overlay").style.display = "block";
+  setTimeout(() => document.getElementById("filter-overlay").style.opacity = "1", 10);
+  document.getElementById("filter-sheet").style.bottom = "0";
+}
+function closeFilterSheet() {
+  document.getElementById("filter-overlay").style.opacity = "0";
+  document.getElementById("filter-sheet").style.bottom = "-100%";
+  setTimeout(() => document.getElementById("filter-overlay").style.display = "none", 300);
+}
+
+// --- PRODUCT RENDERING (Standard from before) ---
 function renderSearchResultsGrid(products) {
   const grid = document.getElementById("final-results-grid");
   const wishlist = getWishlist();
@@ -272,46 +349,40 @@ function renderSearchResultsGrid(products) {
   }).join("");
 }
 
-// --- FILTER BOTTOM SHEET UI ---
-function openFilterSheet() {
-  document.getElementById("filter-overlay").style.display = "block";
-  setTimeout(() => document.getElementById("filter-overlay").style.opacity = "1", 10);
-  document.getElementById("filter-sheet").style.bottom = "0";
+// --- WISHLIST ---
+function getWishlist() { return JSON.parse(localStorage.getItem("native_wishlist") || "[]"); }
+function saveWishlist(w) { localStorage.setItem("native_wishlist", JSON.stringify(w)); }
+function toggleWishlist(id, name, price, image) {
+  let w = getWishlist();
+  let exists = w.find(item => item.id === id);
+  if (exists) { w = w.filter(item => item.id !== id); showToast("Removed from Wishlist"); } 
+  else { w.push({ id, name, price: parseFloat(price), image }); showToast("✓ Added to Wishlist"); }
+  saveWishlist(w);
+  if (window.location.hash === "#search-results") applyFilters();
+  if (window.location.hash === "#wishlist") renderWishlistPage();
 }
-function closeFilterSheet() {
-  document.getElementById("filter-overlay").style.opacity = "0";
-  document.getElementById("filter-sheet").style.bottom = "-100%";
-  setTimeout(() => document.getElementById("filter-overlay").style.display = "none", 300);
+function renderWishlistPage() {
+  const w = getWishlist();
+  const grid = document.getElementById("wishlist-grid");
+  if (w.length === 0) { grid.innerHTML = "<div style='grid-column: span 2; text-align: center; padding: 40px;'><i class='fa-regular fa-heart' style='font-size:48px; color:#ccc; margin-bottom:16px;'></i><h3>Your wishlist is empty</h3></div>"; return; }
+  grid.innerHTML = w.map(p => `<div class="card" onclick="navigate('product', ${p.id})"><img src="${p.image}" loading="lazy"><div style="padding: 8px 12px;"><h3>${p.name}</h3></div></div>`).join("");
 }
 
-// --- OTHER PAGES (Standard) ---
+// --- OTHER PAGES ---
 async function loadProducts(containerId) {
-  const el = document.getElementById(containerId);
-  if (!el) return;
+  const el = document.getElementById(containerId); if (!el) return;
   if (globalProducts.length > 0) { renderProductGrid(containerId, globalProducts); return; }
   el.innerHTML = "<p style='padding:16px;'>Loading products...</p>";
-  try {
-    const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products?per_page=50`);
-    globalProducts = await res.json();
-    renderProductGrid(containerId, globalProducts);
-  } catch(e) { el.innerHTML = "<p style='padding:16px;'>Error loading products.</p>"; }
+  try { const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products?per_page=50`); globalProducts = await res.json(); renderProductGrid(containerId, globalProducts); } catch(e) { el.innerHTML = "<p style='padding:16px;'>Error loading products.</p>"; }
 }
-
 function renderProductGrid(containerId, products) {
-  const el = document.getElementById(containerId);
-  if (!el) return;
+  const el = document.getElementById(containerId); if (!el) return;
   if (products.length === 0) { el.innerHTML = "<p>No products found.</p>"; return; }
-  el.innerHTML = products.map(p => `
-    <div class="card" onclick="navigate('product', ${p.id})">
-      <img src="${p.images[0]?.thumbnail || ''}" loading="lazy" alt="${p.name}">
-      <h3>${p.name}</h3>
-      <div class="price">${p.price_html}</div>
-    </div>`).join("");
+  el.innerHTML = products.map(p => `<div class="card" onclick="navigate('product', ${p.id})"><img src="${p.images[0]?.thumbnail || ''}" loading="lazy" alt="${p.name}"><h3>${p.name}</h3><div class="price">${p.price_html}</div></div>`).join("");
 }
 
 async function loadSingleProduct(id) {
-  const el = document.getElementById("product-detail");
-  el.innerHTML = "<p style='padding:16px;'>Loading product...</p>";
+  const el = document.getElementById("product-detail"); el.innerHTML = "<p style='padding:16px;'>Loading product...</p>";
   try {
     let p = globalProducts.find(item => item.id == id);
     if (!p) { const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products/${id}`); p = await res.json(); }
@@ -331,68 +402,34 @@ async function loadSingleProduct(id) {
 // --- CART LOGIC ---
 function getCart() { return JSON.parse(localStorage.getItem("native_cart") || "[]"); }
 function saveCart(cart) { localStorage.setItem("native_cart", JSON.stringify(cart)); updateCartBadge(); }
-
 function addToCart(id, name, price, image) {
-  let cart = getCart();
-  let existing = cart.find(item => item.id === id);
+  let cart = getCart(); let existing = cart.find(item => item.id === id);
   if (existing) { existing.qty += 1; } else { cart.push({ id, name, price: parseFloat(price), image, qty: 1 }); }
   saveCart(cart); showToast("✓ Added to Cart");
 }
-
 function updateCartBadge() {
-  const cart = getCart();
-  const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
+  const cart = getCart(); const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
   const cartTab = document.querySelector('.tab[data-id="cart"]');
   if (cartTab) {
     let badge = cartTab.querySelector(".cart-badge");
-    if (!badge) {
-      badge = document.createElement("div"); badge.className = "cart-badge";
-      badge.style.cssText = "position:absolute; top:10px; right:25%; background:#FF4B2B; color:#fff; font-size:10px; font-weight:bold; width:16px; height:16px; border-radius:50%; display:flex; align-items:center; justify-content:center;";
-      cartTab.appendChild(badge);
-    }
+    if (!badge) { badge = document.createElement("div"); badge.className = "cart-badge"; badge.style.cssText = "position:absolute; top:10px; right:25%; background:#FF4B2B; color:#fff; font-size:10px; font-weight:bold; width:16px; height:16px; border-radius:50%; display:flex; align-items:center; justify-content:center;"; cartTab.appendChild(badge); }
     badge.textContent = totalItems; badge.style.display = totalItems > 0 ? "flex" : "none";
   }
 }
-
 function renderCart() {
-  const cart = getCart();
-  const el = document.getElementById("cart-items");
-  const summary = document.getElementById("cart-summary");
-  if (cart.length === 0) {
-    el.innerHTML = "<div style='text-align:center; padding:40px 16px;'><i class='fa-solid fa-cart-shopping' style='font-size:48px; color:#ccc; margin-bottom:16px;'></i><h2>Your cart is empty</h2><p style='color:#666; margin-top:8px;'>Looks like you haven't added anything yet.</p></div>";
-    summary.style.display = "none"; return;
-  }
+  const cart = getCart(); const el = document.getElementById("cart-items"); const summary = document.getElementById("cart-summary");
+  if (cart.length === 0) { el.innerHTML = "<div style='text-align:center; padding:40px 16px;'><i class='fa-solid fa-cart-shopping' style='font-size:48px; color:#ccc; margin-bottom:16px;'></i><h2>Your cart is empty</h2><p style='color:#666; margin-top:8px;'>Looks like you haven't added anything yet.</p></div>"; summary.style.display = "none"; return; }
   let total = 0;
   el.innerHTML = cart.map(item => {
-    total += (item.price * item.qty);
-    let displayPrice = (item.price / 100).toFixed(2);
-    let totalForItem = ((item.price * item.qty) / 100).toFixed(2);
-    return `
-    <div style="display:flex; gap:12px; padding:16px; border-bottom:1px solid #eee; align-items:center;">
-      <img src="${item.image}" style="width:64px; height:64px; border-radius:8px; object-fit:cover;">
-      <div style="flex:1;"><h3 style="font-size:14px; margin-bottom:4px;">${item.name}</h3><div style="color:#666; font-size:13px;">$${displayPrice}</div></div>
-      <div style="display:flex; align-items:center; gap:12px; background:#f5f5f5; padding:4px 12px; border-radius:20px;">
-        <button onclick="changeQty(${item.id}, -1)" style="border:none; background:none; font-size:16px; cursor:pointer;">-</button>
-        <span style="font-size:14px; font-weight:600;">${item.qty}</span>
-        <button onclick="changeQty(${item.id}, 1)" style="border:none; background:none; font-size:16px; cursor:pointer;">+</button>
-      </div>
-      <div style="font-weight:700; font-size:14px; width:50px; text-align:right;">$${totalForItem}</div>
-    </div>`;
+    total += (item.price * item.qty); let displayPrice = (item.price / 100).toFixed(2); let totalForItem = ((item.price * item.qty) / 100).toFixed(2);
+    return `<div style="display:flex; gap:12px; padding:16px; border-bottom:1px solid #eee; align-items:center;"><img src="${item.image}" style="width:64px; height:64px; border-radius:8px; object-fit:cover;"><div style="flex:1;"><h3 style="font-size:14px; margin-bottom:4px;">${item.name}</h3><div style="color:#666; font-size:13px;">$${displayPrice}</div></div><div style="display:flex; align-items:center; gap:12px; background:#f5f5f5; padding:4px 12px; border-radius:20px;"><button onclick="changeQty(${item.id}, -1)" style="border:none; background:none; font-size:16px; cursor:pointer;">-</button><span style="font-size:14px; font-weight:600;">${item.qty}</span><button onclick="changeQty(${item.id}, 1)" style="border:none; background:none; font-size:16px; cursor:pointer;">+</button></div><div style="font-weight:700; font-size:14px; width:50px; text-align:right;">$${totalForItem}</div></div>`;
   }).join("");
-  document.getElementById("cart-total").textContent = `$${(total / 100).toFixed(2)}`;
-  summary.style.display = "block";
+  document.getElementById("cart-total").textContent = `$${(total / 100).toFixed(2)}`; summary.style.display = "block";
 }
-
 function changeQty(id, change) {
-  let cart = getCart();
-  let item = cart.find(i => i.id === id);
-  if (item) {
-    item.qty += change;
-    if (item.qty <= 0) cart = cart.filter(i => i.id !== id);
-    saveCart(cart); renderCart();
-  }
+  let cart = getCart(); let item = cart.find(i => i.id === id);
+  if (item) { item.qty += change; if (item.qty <= 0) cart = cart.filter(i => i.id !== id); saveCart(cart); renderCart(); }
 }
-
 function checkout() { navigate("checkout"); }
 
 updateCartBadge();
