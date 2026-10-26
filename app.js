@@ -39,8 +39,7 @@ async function loadProducts(containerId) {
   el.innerHTML = "<p style='padding:16px;'>Loading products...</p>";
 
   try {
-    // FIXED URL: Added /v1/
-const res = await fetch(`${APP_CONFIG.siteUrl}'/wp-json/wc/store/v1/products?per_page=20`);`);
+    const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products?per_page=20`);
     const products = await res.json();
     
     el.innerHTML = products.map(p => `
@@ -61,8 +60,7 @@ async function loadSingleProduct(id) {
   el.innerHTML = "<p style='padding:16px;'>Loading product...</p>";
 
   try {
-    // FIXED URL: Added /v1/
-    const res = await fetch(`${APP_CONFIG.siteUrl}'/wp-json/wc/store/v1/products/${id}`);`);
+    const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products/${id}`);
     const p = await res.json();
     
     el.innerHTML = `
@@ -90,3 +88,6 @@ function addToCart(permalink) {
   container.innerHTML = `<iframe src="${permalink}"
     style="width:100%;height:100%;border:0;position:absolute;top:0;left:0;bottom:60px;"></iframe>`;
 }
+
+// Start the app
+navigate("home");
