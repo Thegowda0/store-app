@@ -386,7 +386,6 @@ function renderProductPage(p) {
   if (stickySummary) stickySummary.textContent = Object.values(_selectedAttributes).join(", ");
   stickyBar.style.display = "block";
   updateProductAddButton();
-  loadReviewsCarousel(p.id);
 }
 
 // ==================== REVIEWS CAROUSEL ====================
@@ -402,38 +401,44 @@ async function loadReviewsCarousel(productId) {
 
   var reviews = [];
 
-  // Primary: WooCommerce Store API reviews
+  // Fetch all pages of WC reviews for this product
   try {
-    var wcRes = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/reviews?product_id=" + productId + "&per_page=10");
-    if (wcRes.ok) {
+    var page = 1;
+    var more = true;
+    while (more && page <= 5) {
+      var wcRes = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/reviews?product_id=" + productId + "&per_page=100&page=" + page + "&order=desc&orderby=date");
+      if (!wcRes.ok) break;
       var wcData = await wcRes.json();
-      if (Array.isArray(wcData) && wcData.length > 0) {
-        reviews = wcData.map(function(r) {
-          return {
-            name: r.reviewer || "Anonymous",
-            text: (r.review || "").replace(/<[^>]*>/g, "").trim(),
-            rating: r.rating || 5,
-            avatar: r.reviewer_avatar_urls ? (r.reviewer_avatar_urls["48"] || "") : ""
-          };
+      if (!Array.isArray(wcData) || wcData.length === 0) { more = false; break; }
+      wcData.forEach(function(r) {
+        reviews.push({
+          name: r.reviewer || "Anonymous",
+          text: (r.review || "").replace(/<[^>]*>/g, "").trim(),
+          rating: parseInt(r.rating) || 5,
+          avatar: r.reviewer_avatar_urls ? (r.reviewer_avatar_urls["48"] || "") : "",
+          date: r.date_created || ""
         });
-      }
+      });
+      if (wcData.length < 100) more = false;
+      else page++;
     }
   } catch(e) { console.log("WC carousel reviews failed:", e); }
 
   // Fallback: WP comments
   if (reviews.length === 0) {
     try {
-      var res = await fetch(APP_CONFIG.siteUrl + "/wp-json/wp/v2/comments?post=" + productId + "&per_page=10");
+      var res = await fetch(APP_CONFIG.siteUrl + "/wp-json/wp/v2/comments?post=" + productId + "&per_page=100");
       if (res.ok) {
         var comments = await res.json();
-        if (Array.isArray(comments) && comments.length > 0) {
-          reviews = comments.map(function(c) {
-            return {
+        if (Array.isArray(comments)) {
+          comments.forEach(function(c) {
+            reviews.push({
               name: c.author_name || "Anonymous",
               text: (c.content && c.content.rendered) ? c.content.rendered.replace(/<[^>]*>/g, "").trim() : "",
               rating: c.meta && c.meta.rating ? parseInt(c.meta.rating) : 5,
-              avatar: c.author_avatar_urls ? (c.author_avatar_urls["48"] || "") : ""
-            };
+              avatar: c.author_avatar_urls ? (c.author_avatar_urls["48"] || "") : "",
+              date: c.date || ""
+            });
           });
         }
       }
@@ -465,10 +470,12 @@ function renderCarouselSlide() {
   if (!el || _carouselData.length === 0) return;
   var r = _carouselData[_carouselIndex];
   var stars = "";
-  for (var i = 0; i < 5; i++) stars += (i < r.rating ? "★" : "☆");
+  for (var i = 0; i < 5; i++) stars += (i < r.rating ? "\u2605" : "\u2606");
   var initials = (r.name || "A").substring(0, 1).toUpperCase();
+  var idxLabel = (_carouselIndex + 1) + "/" + _carouselData.length;
   el.innerHTML =
-    '<div style="position:absolute;top:0;left:0;right:0;bottom:0;padding:12px;background:#f9f9f9;border-radius:12px;transition:opacity 0.5s;">' +
+    '<div style="position:absolute;top:0;left:0;right:0;bottom:0;padding:12px;background:#f9f9f9;border-radius:12px;">' +
+      '<div style="position:absolute;top:8px;right:12px;font-size:11px;color:#888;">' + idxLabel + '</div>' +
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">' +
         (r.avatar
           ? '<img src="' + r.avatar + '" style="width:36px;height:36px;border-radius:50%;">'
@@ -1238,48 +1245,65 @@ async function loadReviewsPage(productId) {
   }
 
   var productName = p ? p.name : "Product";
-  var productImg = (p && p.images && p.images[0]) ? p.images[0].thumbnail : "";
-
   var reviews = [];
+
+  // Fetch all pages of WC reviews
   try {
-    var wcRevRes = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/reviews?product_id=" + productId + "&per_page=50");
-    if (wcRevRes.ok) {
+    var page = 1;
+    var more = true;
+    while (more && page <= 5) {
+      var wcRevRes = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/reviews?product_id=" + productId + "&per_page=100&page=" + page + "&order=desc&orderby=date");
+      if (!wcRevRes.ok) break;
       var wcRevs = await wcRevRes.json();
-      if (Array.isArray(wcRevs)) {
-        reviews = wcRevs.map(function(r) {
-          return {
-            reviewer: r.reviewer || "Anonymous",
-            review: (r.review || "").replace(/<[^>]*>/g, "").trim(),
-            rating: r.rating || 5,
-            date_created: r.date_created || "",
-            verified: r.verified || false,
-            avatar: r.reviewer_avatar_urls ? (r.reviewer_avatar_urls["48"] || "") : ""
-          };
+      if (!Array.isArray(wcRevs) || wcRevs.length === 0) { more = false; break; }
+      wcRevs.forEach(function(r) {
+        reviews.push({
+          id: r.id,
+          reviewer: r.reviewer || "Anonymous",
+          review: (r.review || "").replace(/<[^>]*>/g, "").trim(),
+          rating: parseInt(r.rating) || 5,
+          date_created: r.date_created || "",
+          verified: r.verified || false,
+          avatar: r.reviewer_avatar_urls ? (r.reviewer_avatar_urls["48"] || "") : ""
         });
-      }
+      });
+      if (wcRevs.length < 100) more = false;
+      else page++;
     }
   } catch(e) { console.log("WC reviews page fetch failed:", e); }
 
+  // Fallback: WP comments
   if (reviews.length === 0) {
     try {
-      var commentsRes = await fetch(APP_CONFIG.siteUrl + "/wp-json/wp/v2/comments?post=" + productId + "&per_page=50");
+      var commentsRes = await fetch(APP_CONFIG.siteUrl + "/wp-json/wp/v2/comments?post=" + productId + "&per_page=100");
       if (commentsRes.ok) {
         var comments = await commentsRes.json();
-        reviews = comments.map(function(c) {
-          return {
-            reviewer: c.author_name || "Anonymous",
-            review: (c.content && c.content.rendered) ? c.content.rendered.replace(/<[^>]*>/g, "").trim() : "",
-            rating: c.meta && c.meta.rating ? parseInt(c.meta.rating) : 5,
-            date_created: c.date || "",
-            verified: false,
-            avatar: c.author_avatar_urls ? (c.author_avatar_urls["48"] || "") : ""
-          };
-        });
+        if (Array.isArray(comments)) {
+          comments.forEach(function(c) {
+            reviews.push({
+              id: c.id,
+              reviewer: c.author_name || "Anonymous",
+              review: (c.content && c.content.rendered) ? c.content.rendered.replace(/<[^>]*>/g, "").trim() : "",
+              rating: c.meta && c.meta.rating ? parseInt(c.meta.rating) : 5,
+              date_created: c.date || "",
+              verified: false,
+              avatar: c.author_avatar_urls ? (c.author_avatar_urls["48"] || "") : ""
+            });
+          });
+        }
       }
     } catch(e) { console.log("Comments fallback failed:", e); }
   }
 
-  // Compute star distribution
+  // Dedupe by id
+  var seen = {};
+  reviews = reviews.filter(function(r) {
+    var key = r.id || (r.reviewer + "|" + r.review);
+    if (seen[key]) return false;
+    seen[key] = true;
+    return true;
+  });
+
   var total = reviews.length;
   var counts = {1:0,2:0,3:0,4:0,5:0};
   var sum = 0;
@@ -1288,19 +1312,16 @@ async function loadReviewsPage(productId) {
 
   var html = '';
   html += '<div style="background:#fff;min-height:100vh;padding-bottom:90px;">';
-
-  // Header
   html += '<div style="padding:16px;background:#fff;border-bottom:1px solid #eee;display:flex;align-items:center;gap:12px;">';
   html += '<i class="fa-solid fa-arrow-left" onclick="history.back()" style="font-size:20px;cursor:pointer;"></i>';
   html += '<h1 style="font-size:18px;font-weight:700;">Reviews</h1>';
   html += '</div>';
 
-  // Summary
   html += '<div style="padding:20px;background:#fff;display:flex;gap:20px;border-bottom:8px solid #f5f5f5;">';
   html += '<div style="text-align:center;">';
   html += '<div style="font-size:42px;font-weight:800;color:#111;line-height:1;">' + avg + '</div>';
   html += '<div style="color:#FFD700;font-size:16px;margin-top:4px;">';
-  for (var s=1;s<=5;s++) html += (s <= Math.round(parseFloat(avg)) ? "★" : "☆");
+  for (var s=1;s<=5;s++) html += (s <= Math.round(parseFloat(avg)) ? "\u2605" : "\u2606");
   html += '</div>';
   html += '<div style="font-size:12px;color:#888;margin-top:4px;">' + total + ' reviews</div>';
   html += '</div>';
@@ -1308,14 +1329,13 @@ async function loadReviewsPage(productId) {
   for (var star=5;star>=1;star--) {
     var pct = total > 0 ? (counts[star] / total * 100) : 0;
     html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:12px;">';
-    html += '<span style="width:20px;color:#888;">' + star + '★</span>';
+    html += '<span style="width:20px;color:#888;">' + star + '\u2605</span>';
     html += '<div style="flex:1;height:6px;background:#eee;border-radius:3px;overflow:hidden;"><div style="width:' + pct + '%;height:100%;background:#FFD700;"></div></div>';
     html += '<span style="width:24px;text-align:right;color:#888;">' + counts[star] + '</span>';
     html += '</div>';
   }
   html += '</div></div>';
 
-  // Review list
   if (reviews.length === 0) {
     html += '<div style="padding:60px 20px;text-align:center;">';
     html += '<i class="fa-regular fa-star" style="font-size:48px;color:#ddd;margin-bottom:16px;"></i>';
@@ -1326,7 +1346,7 @@ async function loadReviewsPage(productId) {
     html += '<div style="padding:8px 16px;">';
     reviews.forEach(function(r) {
       var stars = "";
-      for (var i=0;i<5;i++) stars += (i < r.rating ? "★" : "☆");
+      for (var i=0;i<5;i++) stars += (i < r.rating ? "\u2605" : "\u2606");
       var dateStr = r.date_created ? new Date(r.date_created).toLocaleDateString() : "";
       var initial = (r.reviewer || "A").substring(0,1).toUpperCase();
       html += '<div style="padding:16px 0;border-bottom:1px solid #f0f0f0;">';
@@ -1343,12 +1363,10 @@ async function loadReviewsPage(productId) {
     html += '</div>';
   }
 
-  // Write review button
   var permalink = p ? (p.permalink + "#reviews") : (APP_CONFIG.siteUrl + "/?p=" + productId + "#reviews");
   html += '<div style="padding:16px;">';
   html += '<button onclick="openReviewInWebView(\'' + permalink + '\')" style="width:100%;padding:14px;background:#111;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">Write a Review</button>';
   html += '</div>';
-
   html += '</div>';
 
   if (container) container.innerHTML = html;
