@@ -401,49 +401,23 @@ async function loadReviewsCarousel(productId) {
 
   var reviews = [];
 
-  // Fetch all pages of WC reviews for this product
   try {
-    var page = 1;
-    var more = true;
-    while (more && page <= 5) {
-      var wcRes = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/reviews?product_id=" + productId + "&per_page=100&page=" + page + "&order=desc&orderby=date");
-      if (!wcRes.ok) break;
+    var wcRes = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/reviews?product_id=" + productId + "&per_page=100&order=desc&orderby=date");
+    if (wcRes.ok) {
       var wcData = await wcRes.json();
-      if (!Array.isArray(wcData) || wcData.length === 0) { more = false; break; }
-      wcData.forEach(function(r) {
-        reviews.push({
-          name: r.reviewer || "Anonymous",
-          text: (r.review || "").replace(/<[^>]*>/g, "").trim(),
-          rating: parseInt(r.rating) || 5,
-          avatar: r.reviewer_avatar_urls ? (r.reviewer_avatar_urls["48"] || "") : "",
-          date: r.date_created || ""
+      if (Array.isArray(wcData)) {
+        reviews = wcData.map(function(r) {
+          return {
+            name: r.reviewer || "Anonymous",
+            text: (r.review || "").replace(/<[^>]*>/g, "").trim(),
+            rating: parseInt(r.rating) || 5,
+            avatar: r.reviewer_avatar_urls ? (r.reviewer_avatar_urls["48"] || "") : "",
+            date: r.date_created || ""
+          };
         });
-      });
-      if (wcData.length < 100) more = false;
-      else page++;
+      }
     }
   } catch(e) { console.log("WC carousel reviews failed:", e); }
-
-  // Fallback: WP comments
-  if (reviews.length === 0) {
-    try {
-      var res = await fetch(APP_CONFIG.siteUrl + "/wp-json/wp/v2/comments?post=" + productId + "&per_page=100");
-      if (res.ok) {
-        var comments = await res.json();
-        if (Array.isArray(comments)) {
-          comments.forEach(function(c) {
-            reviews.push({
-              name: c.author_name || "Anonymous",
-              text: (c.content && c.content.rendered) ? c.content.rendered.replace(/<[^>]*>/g, "").trim() : "",
-              rating: c.meta && c.meta.rating ? parseInt(c.meta.rating) : 5,
-              avatar: c.author_avatar_urls ? (c.author_avatar_urls["48"] || "") : "",
-              date: c.date || ""
-            });
-          });
-        }
-      }
-    } catch(e) { console.log("WP comments carousel fallback failed:", e); }
-  }
 
   if (reviews.length === 0) {
     if (headingCount) headingCount.textContent = "(0)";
@@ -1236,78 +1210,37 @@ handleRoute();
 
 // ==================== REVIEWS PAGE ====================
 async function loadReviewsPage(productId) {
-  var p = globalProducts.find(function(item) { return item.id == productId; });
-  if (!p) {
-    try {
-      var pres = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/" + productId);
-      if (pres.ok) p = await pres.json();
-    } catch(e) {}
-  }
-
-  var productName = p ? p.name : "Product";
-  var reviews = [];
-
-  // Fetch all pages of WC reviews
+  var p = null;
   try {
-    var page = 1;
-    var more = true;
-    while (more && page <= 5) {
-      var wcRevRes = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/reviews?product_id=" + productId + "&per_page=100&page=" + page + "&order=desc&orderby=date");
-      if (!wcRevRes.ok) break;
+    var pres = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/" + productId);
+    if (pres.ok) p = await pres.json();
+  } catch(e) {}
+
+  var reviews = [];
+  try {
+    var wcRevRes = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/reviews?product_id=" + productId + "&per_page=100&order=desc&orderby=date");
+    if (wcRevRes.ok) {
       var wcRevs = await wcRevRes.json();
-      if (!Array.isArray(wcRevs) || wcRevs.length === 0) { more = false; break; }
-      wcRevs.forEach(function(r) {
-        reviews.push({
-          id: r.id,
-          reviewer: r.reviewer || "Anonymous",
-          review: (r.review || "").replace(/<[^>]*>/g, "").trim(),
-          rating: parseInt(r.rating) || 5,
-          date_created: r.date_created || "",
-          verified: r.verified || false,
-          avatar: r.reviewer_avatar_urls ? (r.reviewer_avatar_urls["48"] || "") : ""
+      if (Array.isArray(wcRevs)) {
+        reviews = wcRevs.map(function(r) {
+          return {
+            id: r.id,
+            reviewer: r.reviewer || "Anonymous",
+            review: (r.review || "").replace(/<[^>]*>/g, "").trim(),
+            rating: parseInt(r.rating) || 5,
+            date_created: r.date_created || "",
+            verified: r.verified || false,
+            avatar: r.reviewer_avatar_urls ? (r.reviewer_avatar_urls["48"] || "") : ""
+          };
         });
-      });
-      if (wcRevs.length < 100) more = false;
-      else page++;
+      }
     }
   } catch(e) { console.log("WC reviews page fetch failed:", e); }
-
-  // Fallback: WP comments
-  if (reviews.length === 0) {
-    try {
-      var commentsRes = await fetch(APP_CONFIG.siteUrl + "/wp-json/wp/v2/comments?post=" + productId + "&per_page=100");
-      if (commentsRes.ok) {
-        var comments = await commentsRes.json();
-        if (Array.isArray(comments)) {
-          comments.forEach(function(c) {
-            reviews.push({
-              id: c.id,
-              reviewer: c.author_name || "Anonymous",
-              review: (c.content && c.content.rendered) ? c.content.rendered.replace(/<[^>]*>/g, "").trim() : "",
-              rating: c.meta && c.meta.rating ? parseInt(c.meta.rating) : 5,
-              date_created: c.date || "",
-              verified: false,
-              avatar: c.author_avatar_urls ? (c.author_avatar_urls["48"] || "") : ""
-            });
-          });
-        }
-      }
-    } catch(e) { console.log("Comments fallback failed:", e); }
-  }
-
-  // Dedupe by id
-  var seen = {};
-  reviews = reviews.filter(function(r) {
-    var key = r.id || (r.reviewer + "|" + r.review);
-    if (seen[key]) return false;
-    seen[key] = true;
-    return true;
-  });
 
   var total = reviews.length;
   var counts = {1:0,2:0,3:0,4:0,5:0};
   var sum = 0;
-  reviews.forEach(function(r) { var st = Math.max(1, Math.min(5, parseInt(r.rating) || 5)); counts[st]++; sum += st; });
+  reviews.forEach(function(r) { var st = Math.max(1, Math.min(5, r.rating)); counts[st]++; sum += st; });
   var avg = total > 0 ? (sum / total).toFixed(1) : "0.0";
 
   var html = '';
@@ -1362,12 +1295,6 @@ async function loadReviewsPage(productId) {
     });
     html += '</div>';
   }
-
-  var permalink = p ? (p.permalink + "#reviews") : (APP_CONFIG.siteUrl + "/?p=" + productId + "#reviews");
-  html += '<div style="padding:16px;">';
-  html += '<button onclick="openReviewInWebView(\'' + permalink + '\')" style="width:100%;padding:14px;background:#111;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">Write a Review</button>';
-  html += '</div>';
-  html += '</div>';
 
   if (container) container.innerHTML = html;
 }
