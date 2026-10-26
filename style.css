@@ -1,37 +1,25 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-body { font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background:#f7f7f7; color:#111; }
+body { font-family: 'Inter', -apple-system, sans-serif; background:#f7f7f7; color: #111; }
+
+/* --- APP SHELL & NAVIGATION --- */
 #page-container { position:absolute; top:0; left:0; right:0; bottom:60px; overflow-y:auto; -webkit-overflow-scrolling:touch; }
 #tabbar { position:fixed; bottom:0; left:0; right:0; height:60px; display:flex; background:rgba(255,255,255,0.95); backdrop-filter:blur(10px); border-top:1px solid #eee; padding-bottom:env(safe-area-inset-bottom); z-index:100; }
-.tab { flex:1; border:0; background:none; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:10px; color:#888; transition:color 0.2s; }
+.tab { flex:1; border:0; background:none; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:10px; color:#888; transition:color 0.2s; position:relative; }
 .tab.active { color:#111; font-weight:600; }
-.tab span { font-size:22px; margin-bottom:2px; filter: grayscale(1); opacity: 0.5; transition: 0.2s; }
-.tab.active span { filter: grayscale(0); opacity: 1; transform: scale(1.1); }
-
-.hero { padding:40px 20px; background:linear-gradient(135deg, #111 0%, #333 100%); color:#fff; border-bottom-left-radius: 24px; border-bottom-right-radius: 24px; margin-bottom: 20px;}
-.hero h1 { font-size:28px; margin-bottom:8px; }
-.hero p { color:#aaa; font-size:14px; }
-
-.grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; padding:0 16px 32px; }
-.card { background:#fff; border-radius:16px; overflow:hidden; padding-bottom:12px; box-shadow:0 4px 12px rgba(0,0,0,0.05); transition:transform 0.1s; cursor:pointer; }
-.card:active { transform:scale(0.96); }
-.card img { width:100%; aspect-ratio:1/1; object-fit:cover; background:#eee; }
-.card h3 { font-size:14px; padding:10px 12px 4px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.card .price { font-size:13px; padding:0 12px; color:#555; font-weight:500; }
+.tab span { font-size:20px; margin-bottom:2px; opacity: 0.6; transition: 0.2s; }
+.tab.active span { opacity: 1; transform: scale(1.1); }
 
 /* --- ANIMATIONS --- */
-
-/* Smooth fade-in for product cards */
 @keyframes fadeInUp {
   from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }
 }
-
 .card {
   animation: fadeInUp 0.4s ease-out forwards;
-  opacity: 0; /* Starts invisible until animation plays */
+  opacity: 0; 
 }
-
-/* Stagger the animation so they pop in one by one */
 .card:nth-child(1) { animation-delay: 0.05s; }
 .card:nth-child(2) { animation-delay: 0.1s; }
 .card:nth-child(3) { animation-delay: 0.15s; }
@@ -41,28 +29,7 @@ body { font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-s
 .card:nth-child(7) { animation-delay: 0.35s; }
 .card:nth-child(8) { animation-delay: 0.4s; }
 
-/* Better button press effect */
-.card:active {
-  transform: scale(0.95) !important;
-  transition: transform 0.1s;
-}
-
-/* Smooth page transition */
-#page-container {
-  animation: fadeIn 0.3s ease-in-out;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-/* --- PREMIUM HOMEPAGE UI --- */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
-body { font-family: 'Inter', sans-serif; }
-
-/* Hero */
+/* --- HOME PAGE --- */
 .hero-carousel { position: relative; width: 100%; height: 280px; border-radius: 0 0 24px 24px; overflow: hidden; margin-bottom: 24px; }
 .hero-slide { width: 100%; height: 100%; display: flex; align-items: center; padding: 24px; }
 .hero-content { color: #fff; max-width: 80%; }
@@ -72,13 +39,11 @@ body { font-family: 'Inter', sans-serif; }
 .btn-primary { background: #fff; color: #111; border: none; padding: 12px 24px; border-radius: 12px; font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; cursor: pointer; transition: transform 0.2s; }
 .btn-primary:active { transform: scale(0.95); }
 
-/* Sections */
 .section { padding: 0 16px; margin-bottom: 24px; }
 .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .section-header h2 { font-size: 18px; font-weight: 700; color: #111; }
 .section-header a { font-size: 13px; color: #666; text-decoration: none; display: flex; align-items: center; gap: 4px; }
 
-/* Categories (Horizontal Scroll) */
 .category-scroll { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: none; }
 .category-scroll::-webkit-scrollbar { display: none; }
 .category-item { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 72px; cursor: pointer; }
@@ -86,15 +51,42 @@ body { font-family: 'Inter', sans-serif; }
 .category-item:active .cat-icon { transform: scale(0.9); }
 .category-item span { font-size: 12px; font-weight: 500; color: #333; }
 
-/* Promo Banner */
 .promo-banner { margin: 0 16px 24px; background: linear-gradient(135deg, #FF416C 0%, #FF4B2B 100%); border-radius: 16px; padding: 20px; display: flex; justify-content: space-between; align-items: center; color: #fff; box-shadow: 0 8px 20px rgba(255, 75, 43, 0.3); }
 .promo-content h3 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
 .promo-content p { font-size: 13px; color: rgba(255,255,255,0.9); }
 .promo-icon { font-size: 40px; opacity: 0.8; }
 
-/* Product Cards (Refined) */
-.card { background: #fff; border-radius: 16px; overflow: hidden; padding-bottom: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.04); transition: transform 0.1s; cursor: pointer; position: relative; }
-.card:active { transform: scale(0.96); }
-.card img { width: 100%; aspect-ratio: 1/1; object-fit: cover; background: #f0f0f0; }
-.card h3 { font-size: 14px; padding: 10px 12px 4px; font-weight: 600; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.card .price { font-size: 14px; padding: 0 12px; color: #111; font-weight: 700; }
+/* --- PRODUCT GRID --- */
+.grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; padding:0 16px 32px; }
+.card { background:#fff; border-radius:16px; overflow:hidden; padding-bottom:12px; box-shadow:0 4px 12px rgba(0,0,0,0.04); transition:transform 0.1s; cursor:pointer; position: relative; }
+.card:active { transform:scale(0.96); }
+.card img { width:100%; aspect-ratio:1/1; object-fit:cover; background:#eee; }
+.card h3 { font-size:14px; padding:10px 12px 4px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:#111;}
+.card .price { font-size:13px; padding:0 12px; color:#555; font-weight:500; }
+
+/* --- FILTER BOTTOM SHEET --- */
+#filter-sheet {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 100dvh; 
+  background: #fff;
+  z-index: 1000;
+  transform: translateY(100%); 
+  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  display: flex;
+  flex-direction: column;
+}
+#filter-sheet.open { transform: translateY(0); }
+
+.filter-sheet-header { position: sticky; top: 0; background: #fff; z-index: 10; border-bottom: 1px solid #eee; }
+
+/* --- CUSTOM TOUCH SLIDER --- */
+.custom-slider-container { position: relative; width: 100%; height: 40px; display: flex; align-items: center; margin: 20px 0; }
+.custom-slider-track { position: absolute; width: 100%; height: 4px; background: #ddd; border-radius: 2px; }
+.custom-slider-fill { position: absolute; height: 4px; background: #111; border-radius: 2px; }
+.custom-slider-thumb { position: absolute; width: 28px; height: 28px; background: #fff; border: 2px solid #111; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.2); cursor: pointer; top: 50%; transform: translate(-50%, -50%); z-index: 2; touch-action: none; }
+
+/* --- ACTIVE PILLS --- */
+.active-pill { display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 20px; font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer; color: #333; }
+.active-pill i { font-size: 11px; color: #888; }
+.active-pill:active { background: #e0e0e0; }
