@@ -1,7 +1,21 @@
 const container = document.getElementById("page-container");
 const tabbar = document.getElementById("tabbar");
 
-// Build tab bar
+// --- TOAST NOTIFICATION ---
+function showToast(message) {
+  let toast = document.getElementById("toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "toast";
+    toast.style.cssText = "position:fixed; bottom:80px; left:50%; transform:translateX(-50%) translateY(20px); background:#111; color:#fff; padding:12px 24px; border-radius:30px; font-size:14px; font-weight:500; opacity:0; transition:all 0.3s; z-index:9999; box-shadow:0 4px 12px rgba(0,0,0,0.2);";
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  setTimeout(() => { toast.style.opacity = "1"; toast.style.transform = "translateX(-50%) translateY(0)"; }, 10);
+  setTimeout(() => { toast.style.opacity = "0"; toast.style.transform = "translateX(-50%) translateY(20px)"; }, 2500);
+}
+
+// --- BUILD TAB BAR ---
 APP_CONFIG.tabs.forEach(tab => {
   const btn = document.createElement("button");
   btn.className = "tab";
@@ -11,7 +25,7 @@ APP_CONFIG.tabs.forEach(tab => {
   tabbar.appendChild(btn);
 });
 
-// Router
+// --- ROUTER ---
 async function navigate(pageId, param = null) {
   if (APP_CONFIG.nativePages[pageId]) {
     const res = await fetch(APP_CONFIG.nativePages[pageId]);
@@ -20,6 +34,7 @@ async function navigate(pageId, param = null) {
     if (pageId === "home") loadProducts("home-featured");
     if (pageId === "shop") loadProducts("product-list");
     if (pageId === "product" && param) loadSingleProduct(param);
+    if (pageId === "cart") renderCart();
     
   } else {
     const path = APP_CONFIG.webviewRoutes[pageId] || "/" + pageId;
@@ -31,11 +46,10 @@ async function navigate(pageId, param = null) {
     t.classList.toggle("active", t.dataset.id === pageId));
 }
 
-// Load multiple products
+// --- PRODUCTS ---
 async function loadProducts(containerId) {
   const el = document.getElementById(containerId);
   if (!el) return;
-  
   el.innerHTML = "<p style='padding:16px;'>Loading products...</p>";
 
   try {
@@ -49,12 +63,10 @@ async function loadProducts(containerId) {
         <div class="price">${p.price_html}</div>
       </div>`).join("");
   } catch(e) { 
-    console.error(e); 
     el.innerHTML = "<p style='padding:16px;'>Error loading products.</p>";
   }
 }
 
-// Load single product
 async function loadSingleProduct(id) {
   const el = document.getElementById("product-detail");
   el.innerHTML = "<p style='padding:16px;'>Loading product...</p>";
@@ -72,7 +84,7 @@ async function loadSingleProduct(id) {
       </div>
       
       <div style="position:fixed; bottom:60px; left:0; right:0; padding:16px; background:#fff; border-top:1px solid #eee;">
-        <button onclick="addToCart('${p.permalink}')" 
+        <button onclick="addToCart(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.prices.price}, '${p.images[0]?.thumbnail || ''}')" 
           style="width:100%; padding:16px; background:#111; color:#fff; border:none; border-radius:12px; font-size:16px; font-weight:bold;">
           Add to Cart
         </button>
@@ -83,11 +95,99 @@ async function loadSingleProduct(id) {
   }
 }
 
-// Add to cart
-function addToCart(permalink) {
-  container.innerHTML = `<iframe src="${permalink}"
-    style="width:100%;height:100%;border:0;position:absolute;top:0;left:0;bottom:60px;"></iframe>`;
+// --- REAL NATIVE CART LOGIC ---
+function getCart() {
+  return JSON.parse(localStorage.getItem("native_cart") || "[]");
 }
 
-// Start the app
+function saveCart(cart) {
+  localStorage.setItem("native_cart", JSON.stringify(cart));
+  updateCartBadge();
+}
+
+function addToCart(id, name, price, image) {
+  let cart = getCart();
+  let existing = cart.find(item => item.id === id);
+  
+  if (existing) {
+    existing.qty += 1;
+  } else {
+    cart.push({ id, name, price: parseFloat(price), image, qty: 1 });
+  }
+  
+  saveCart(cart);
+  showToast("✓ Added to Cart");
+}
+
+function updateCartBadge() {
+  const cart = getCart();
+  const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
+  const cartTab = document.querySelector('.tab[data-id="cart"]');
+  
+  if (cartTab) {
+    let badge = cartTab.querySelector(".cart-badge");
+    if (!badge) {
+      badge = document.createElement("div");
+      badge.className = "cart-badge";
+      badge.style.cssText = "position:absolute; top:10px; right:25%; background:#FF4B2B; color:#fff; font-size:10px; font-weight:bold; width:16px; height:16px; border-radius:50%; display:flex; align-items:center; justify-content:center;";
+      cartTab.appendChild(badge);
+    }
+    badge.textContent = totalItems;
+    badge.style.display = totalItems > 0 ? "flex" : "none";
+  }
+}
+
+// --- RENDER CART PAGE ---
+function renderCart() {
+  const cart = getCart();
+  const el = document.getElementById("cart-items");
+  const summary = document.getElementById("cart-summary");
+  
+  if (cart.length === 0) {
+    el.innerHTML = "<div style='text-align:center; padding:40px 16px;'><i class='fa-solid fa-cart-shopping' style='font-size:48px; color:#ccc; margin-bottom:16px;'></i><h2>Your cart is empty</h2><p style='color:#666; margin-top:8px;'>Looks like you haven't added anything yet.</p></div>";
+    summary.style.display = "none";
+    return;
+  }
+
+  let total = 0;
+  el.innerHTML = cart.map(item => {
+    total += (item.price * item.qty);
+    // WooCommerce prices come in cents (e.g. 1800 = $18.00). We divide by 100.
+    let displayPrice = (item.price / 100).toFixed(2);
+    let totalForItem = ((item.price * item.qty) / 100).toFixed(2);
+    
+    return `
+    <div style="display:flex; gap:12px; padding:16px; border-bottom:1px solid #eee; align-items:center;">
+      <img src="${item.image}" style="width:64px; height:64px; border-radius:8px; object-fit:cover;">
+      <div style="flex:1;">
+        <h3 style="font-size:14px; margin-bottom:4px;">${item.name}</h3>
+        <div style="color:#666; font-size:13px;">$${displayPrice}</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px; background:#f5f5f5; padding:4px 12px; border-radius:20px;">
+        <button onclick="changeQty(${item.id}, -1)" style="border:none; background:none; font-size:16px; cursor:pointer;">-</button>
+        <span style="font-size:14px; font-weight:600;">${item.qty}</span>
+        <button onclick="changeQty(${item.id}, 1)" style="border:none; background:none; font-size:16px; cursor:pointer;">+</button>
+      </div>
+      <div style="font-weight:700; font-size:14px; width:50px; text-align:right;">$${totalForItem}</div>
+    </div>`;
+  }).join("");
+
+  const grandTotal = (total / 100).toFixed(2);
+  document.getElementById("cart-total").textContent = `$${grandTotal}`;
+  summary.style.display = "block";
+}
+
+function changeQty(id, change) {
+  let cart = getCart();
+  let item = cart.find(i => i.id === id);
+  if (item) {
+    item.qty += change;
+    if (item.qty <= 0) cart = cart.filter(i => i.id !== id);
+    saveCart(cart);
+    renderCart();
+  }
+}
+
+// Initialize Badge on load
+updateCartBadge();
 navigate("home");
