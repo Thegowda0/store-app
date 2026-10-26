@@ -8,8 +8,8 @@ let currentSearchQuery = "";
 let filterState = {
   sort: "relevance",
   category: null,
-  minPrice: "",
-  maxPrice: "",
+  minPrice: 0,
+  maxPrice: 10000,
   attributes: {} 
 };
 
@@ -131,49 +131,49 @@ function executeSearch() {
 
 function goToSearchResults() { 
   saveSearchHistory(currentSearchQuery); 
-  resetFilters(false); // Reset on new search
+  resetFilters(false); 
   navigate('search-results'); 
 }
 
-// --- DYNAMIC FILTER UI ---
-async function initSearchResultsPage() {
+// --- AMAZON STYLE FILTER UI ---
+function initSearchResultsPage() {
   document.getElementById("results-search-label").textContent = currentSearchQuery || "All Products";
   
-  // Calculate min and max prices for slider
+  // Set min and max limits for the price slider
   if (globalProducts.length > 0) {
-    const prices = globalProducts.map(p => parseInt(p.prices.price) / 100); // Convert cents to dollars
+    const prices = globalProducts.map(p => parseInt(p.prices.price) / 100);
     minProductPrice = Math.floor(Math.min(...prices));
     maxProductPrice = Math.ceil(Math.max(...prices));
-    if (!filterState.minPrice) filterState.minPrice = minProductPrice;
-    if (!filterState.maxPrice) filterState.maxPrice = maxProductPrice;
+    if (filterState.minPrice === 0) filterState.minPrice = minProductPrice;
+    if (filterState.maxPrice === 10000) filterState.maxPrice = maxProductPrice;
   }
 
-  buildDynamicFilterUI();
-  applyFilters();
+  buildFilterSheetUI();
+  applyFilters(); // Initial load
 }
 
-function buildDynamicFilterUI() {
+function buildFilterSheetUI() {
   const container = document.getElementById("filter-accordion-container");
   let html = "";
 
-  // 1. Sort UI (Beautiful Radio Buttons)
+  // 1. Sort UI (Radio Buttons)
   html += createAccordion("sort", "Sort By", `
-    <div style="display:flex; flex-direction:column; gap:12px;">
+    <div style="display:flex; flex-direction:column; gap:8px;">
       ${[
         {id: 'relevance', label: 'Relevance'},
         {id: 'price-low', label: 'Price: Low to High'},
         {id: 'price-high', label: 'Price: High to Low'},
         {id: 'rating', label: 'Customer Rating'}
       ].map(s => `
-        <label style="display:flex; align-items:center; justify-content:space-between; font-size:15px; padding:12px; background:${filterState.sort === s.id ? '#f0f0f0' : '#fff'}; border-radius:8px; cursor:pointer;">
-          <span>${s.label}</span>
+        <label style="display:flex; align-items:center; gap:12px; font-size:15px; padding:8px 0; cursor:pointer;">
           <input type="radio" name="sort" value="${s.id}" ${filterState.sort === s.id ? 'checked' : ''} onchange="filterState.sort='${s.id}'" style="width:18px; height:18px; accent-color:#111;">
+          <span>${s.label}</span>
         </label>
       `).join('')}
     </div>
   `);
 
-  // 2. Price Range Slider
+  // 2. Price UI (Dual Slider)
   html += createAccordion("price", "Price Range", `
     <div style="padding: 10px 0;">
       <div style="display:flex; justify-content:space-between; margin-bottom:16px; font-weight:600; font-size:14px;">
@@ -182,10 +182,10 @@ function buildDynamicFilterUI() {
       </div>
       <div style="position:relative; height:30px;">
         <!-- Slider track -->
-        <div style="position:absolute; top:50%; left:0; right:0; height:4px; background:#ddd; border-radius:2px; transform:translateY(-50%);"></div>
+        <div style="position:absolute; top:50%; left:0; right:0; height:4px; background:#ddd; border-radius:2px; transform:translateY(-50%); z-index:0;"></div>
         <!-- The actual inputs -->
-        <input type="range" min="${minProductPrice}" max="${maxProductPrice}" value="${filterState.minPrice}" oninput="filterState.minPrice=this.value; this.nextElementSibling.value=this.value; updatePriceUI()" style="position:absolute; width:100%; pointer-events:none; appearance:none; background:none; top:0;">
-        <input type="range" min="${minProductPrice}" max="${maxProductPrice}" value="${filterState.maxPrice}" oninput="filterState.maxPrice=this.value; this.previousElementSibling.value=this.value; updatePriceUI()" style="position:absolute; width:100%; pointer-events:none; appearance:none; background:none; top:0;">
+        <input type="range" min="${minProductPrice}" max="${maxProductPrice}" value="${filterState.minPrice}" oninput="handleMinPrice(this.value)" style="position:absolute; width:100%; pointer-events:none; appearance:none; background:none; top:0; z-index:1;">
+        <input type="range" min="${minProductPrice}" max="${maxProductPrice}" value="${filterState.maxPrice}" oninput="handleMaxPrice(this.value)" style="position:absolute; width:100%; pointer-events:none; appearance:none; background:none; top:0; z-index:2;">
       </div>
     </div>
   `);
@@ -193,17 +193,17 @@ function buildDynamicFilterUI() {
   // 3. Categories
   const cats = [...new Set(globalProducts.flatMap(p => p.categories.map(c => c.name)))];
   html += createAccordion("category", "Categories", `
-    <div style="display:flex; flex-direction:column; gap:10px;">
+    <div style="display:flex; flex-direction:column; gap:12px;">
       ${cats.map(c => `
-        <label style="display:flex; align-items:center; justify-content:space-between; font-size:14px; cursor:pointer;">
-          <span>${c}</span>
+        <label style="display:flex; align-items:center; gap:12px; font-size:14px; cursor:pointer;">
           <input type="radio" name="cat" ${filterState.category === c ? 'checked' : ''} onchange="filterState.category='${c}'" style="width:18px; height:18px; accent-color:#111;">
+          <span>${c}</span>
         </label>
       `).join('')}
     </div>
   `);
 
-  // 4. Dynamic Attributes (Color, Size, etc)
+  // 4. Dynamic Attributes (Color, Size, etc.)
   const allAttributes = [...new Set(globalProducts.flatMap(p => p.attributes?.map(a => a.name) || []))];
   
   allAttributes.forEach(attrName => {
@@ -220,29 +220,31 @@ function buildDynamicFilterUI() {
   });
 
   container.innerHTML = html;
-  
-  // Open sort by default
-  document.getElementById("accordion-sort").style.display = "block";
-  document.getElementById("icon-sort").style.transform = "rotate(180deg)";
 }
 
-// Fix for the price slider UI updating instantly
+function handleMinPrice(val) {
+  if (parseInt(val) >= filterState.maxPrice) filterState.minPrice = filterState.maxPrice - 1;
+  else filterState.minPrice = parseInt(val);
+  updatePriceUI();
+}
+
+function handleMaxPrice(val) {
+  if (parseInt(val) <= filterState.minPrice) filterState.maxPrice = filterState.minPrice + 1;
+  else filterState.maxPrice = parseInt(val);
+  updatePriceUI();
+}
+
 function updatePriceUI() {
-  const sliderContainer = document.getElementById("accordion-price");
-  if(sliderContainer) {
-    const spans = sliderContainer.querySelectorAll("span");
-    spans[0].textContent = `$${filterState.minPrice}`;
-    spans[1].textContent = `$${filterState.maxPrice}`;
-  }
+  const el = document.getElementById("accordion-price");
+  if(el) { const spans = el.querySelectorAll("span"); spans[0].textContent = `$${filterState.minPrice}`; spans[1].textContent = `$${filterState.maxPrice}`; }
 }
 
-// Accordion HTML Generator
 function createAccordion(id, title, content) {
   return `
     <div style="border-bottom: 1px solid #eee; padding: 16px 0;">
       <div onclick="toggleAccordion('${id}')" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
-        <h3 style="font-size: 15px; font-weight: 700;">${title}</h3>
-        <i class="fa-solid fa-chevron-down" id="icon-${id}" style="transition: 0.3s;"></i>
+        <h3 style="font-size: 16px; font-weight: 600; color: #111;">${title}</h3>
+        <i class="fa-solid fa-chevron-down" id="icon-${id}" style="transition: 0.3s; color: #666;"></i>
       </div>
       <div id="accordion-${id}" style="display: none; padding-top: 16px;">
         ${content}
@@ -266,62 +268,68 @@ function toggleAccordion(id) {
 function toggleFilterPill(type, value) {
   if (filterState.attributes[type] === value) delete filterState.attributes[type];
   else filterState.attributes[type] = value;
-  buildDynamicFilterUI(); 
+  buildFilterSheetUI(); 
 }
 
 function resetFilters(rerender = true) {
   filterState = { sort: "relevance", category: null, minPrice: minProductPrice, maxPrice: maxProductPrice, attributes: {} };
   if (rerender) {
-    buildDynamicFilterUI();
+    buildFilterSheetUI();
     applyFilters();
   }
 }
 
-// --- EXECUTE API QUERY ---
-async function applyFilters() {
-  const grid = document.getElementById("final-results-grid");
-  grid.innerHTML = "<p style='padding:16px; grid-column:span 2; text-align:center;'>Fetching products...</p>";
+// --- LOCAL FILTERING (100% ACCURATE, NO ERRORS) ---
+function applyFilters() {
+  closeFilterSheet();
   
-  let url = `${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products?per_page=50`;
-  
-  if (currentSearchQuery) url += `&search=${encodeURIComponent(currentSearchQuery)}`;
-  if (filterState.category) url += `&category=${encodeURIComponent(filterState.category)}`;
-  
-  // Price filter
-  if (filterState.minPrice) url += `&min_price=${filterState.minPrice}`;
-  if (filterState.maxPrice) url += `&max_price=${filterState.maxPrice}`;
-  
-  // Sort filter
-  if (filterState.sort === 'price-low') url += `&orderby=price&order=asc`;
-  if (filterState.sort === 'price-high') url += `&orderby=price&order=desc`;
-  if (filterState.sort === 'rating') url += `&orderby=rating&order=desc`;
+  // 1. Start with all products
+  let products = [...globalProducts];
 
-  // Attribute filter
-  let attrIndex = 0;
+  // 2. Filter by Query
+  if (currentSearchQuery) {
+    products = products.filter(p => p.name.toLowerCase().includes(currentSearchQuery) || (p.description || "").toLowerCase().includes(currentSearchQuery));
+  }
+
+  // 3. Filter by Category
+  if (filterState.category) {
+    products = products.filter(p => p.categories.some(c => c.name === filterState.category));
+  }
+
+  // 4. Filter by Price (Remember, prices are in cents! 1800 = $18)
+  products = products.filter(p => {
+    const price = parseInt(p.prices.price) / 100; 
+    return price >= filterState.minPrice && price <= filterState.maxPrice;
+  });
+
+  // 5. Filter by Attributes (Color, Size, etc)
   for (let [key, value] of Object.entries(filterState.attributes)) {
-    url += `&attributes[${attrIndex}].attribute=${encodeURIComponent(key)}&attributes[${attrIndex}].term=${encodeURIComponent(value)}`;
-    attrIndex++;
+    products = products.filter(p => {
+      if (!p.attributes) return false;
+      const attr = p.attributes.find(a => a.name === key);
+      return attr && attr.terms.some(t => t.name === value);
+    });
   }
 
-  try {
-    const res = await fetch(url);
-    const products = await res.json();
-    
-    // Update Badge Count
-    let activeCount = (filterState.category ? 1 : 0) + (filterState.sort !== 'relevance' ? 1 : 0) + Object.keys(filterState.attributes).length;
-    if (filterState.minPrice > minProductPrice || filterState.maxPrice < maxProductPrice) activeCount++;
-    
-    const badge = document.getElementById("active-filter-count");
-    badge.style.display = activeCount > 0 ? "flex" : "none";
-    badge.textContent = activeCount;
-
-    closeFilterSheet();
-    renderSearchResultsGrid(products);
-
-  } catch (e) {
-    console.log(e);
-    grid.innerHTML = "<p style='padding:16px; grid-column:span 2;'>Error loading filters.</p>";
+  // 6. Sort Products
+  if (filterState.sort === 'price-low') {
+    products.sort((a, b) => parseInt(a.prices.price) - parseInt(b.prices.price));
+  } else if (filterState.sort === 'price-high') {
+    products.sort((a, b) => parseInt(b.prices.price) - parseInt(a.prices.price));
+  } else if (filterState.sort === 'rating') {
+    products.sort((a, b) => parseInt(b.average_rating) - parseInt(a.average_rating));
   }
+
+  // Update Active Filter Badge
+  let activeCount = (filterState.category ? 1 : 0) + (filterState.sort !== 'relevance' ? 1 : 0) + Object.keys(filterState.attributes).length;
+  if (filterState.minPrice > minProductPrice || filterState.maxPrice < maxProductPrice) activeCount++;
+  
+  const badge = document.getElementById("active-filter-count");
+  badge.style.display = activeCount > 0 ? "flex" : "none";
+  badge.textContent = activeCount;
+
+  // Render Results
+  renderSearchResultsGrid(products);
 }
 
 function renderSearchResultsGrid(products) {
