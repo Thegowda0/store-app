@@ -625,3 +625,45 @@ function renderWishlistPage() {
 
 updateCartBadge();
 handleRoute();
+
+// --- GUARANTEED TABBAR FIX ---
+function forceBuildTabbar() {
+  var tabbarEl = document.getElementById("tabbar");
+  if (!tabbarEl) {
+    tabbarEl = document.createElement("nav");
+    tabbarEl.id = "tabbar";
+    document.body.appendChild(tabbarEl);
+  }
+  tabbarEl.style.cssText = "position:fixed;bottom:0;left:0;right:0;height:60px;display:flex;background:#fff;border-top:1px solid #eee;z-index:500;padding-bottom:env(safe-area-inset-bottom);";
+  tabbarEl.innerHTML = "";
+  if (typeof APP_CONFIG === "undefined" || !APP_CONFIG.tabs) return;
+  APP_CONFIG.tabs.forEach(function(tab) {
+    var btn = document.createElement("button");
+    btn.className = "tab";
+    btn.dataset.id = tab.id;
+    btn.style.cssText = "flex:1;border:0;background:none;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;color:#888;cursor:pointer;position:relative;padding:4px 0;";
+    btn.innerHTML = '<span style="font-size:20px;">' + tab.icon + '</span><small style="font-size:10px;">' + tab.label + '</small>';
+    btn.onclick = function() { navigate(tab.id, null, true); };
+    tabbarEl.appendChild(btn);
+  });
+  // highlight active tab based on current hash
+  var hash = window.location.hash.replace('#', '') || 'home';
+  var activeId = hash.indexOf('product-') === 0 ? 'home' : (hash.indexOf('-') > -1 ? hash.split('-')[0] : hash);
+  tabbarEl.querySelectorAll(".tab").forEach(function(t) {
+    if (t.dataset.id === activeId || t.dataset.id === hash) {
+      t.style.color = "#111";
+    }
+  });
+  updateCartBadge();
+}
+
+// Run on load
+setTimeout(forceBuildTabbar, 50);
+setTimeout(forceBuildTabbar, 300);
+
+// Wrap navigate to always rebuild after page change
+var _origNavigate = navigate;
+navigate = async function(pageId, param, pushHistory) {
+  await _origNavigate(pageId, param, pushHistory);
+  setTimeout(forceBuildTabbar, 20);
+};
