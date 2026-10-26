@@ -1252,7 +1252,8 @@ async function loadReviewsPage(productId) {
       html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><span style="font-size:12px;width:20px;">' + star + '★</span><div style="flex:1;height:8px;background:#eee;border-radius:4px;overflow:hidden;"><div style="width:' + pct + '%;height:100%;background:#FFD700;"></div></div><span style="font-size:11px;color:#888;width:24px;text-align:right;">' + c + '</span></div>';
     }
     html += '</div></div>';
-    html += '<button onclick="navigate(\'webview\', \'review-form/' + productId + '\', true)" style="width:100%;padding:12px;background:#111;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">Write a Review</button>';
+    var reviewPermalink = (p && p.permalink) ? p.permalink + "#reviews" : (APP_CONFIG.siteUrl + "/?p=" + productId + "#reviews");
+    html += '<button onclick="openReviewInWebView(\'' + reviewPermalink + '\')" style="width:100%;padding:12px;background:#111;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">Write a Review</button>';
     html += '</div>';
 
     // Review list
@@ -1279,4 +1280,10 @@ async function loadReviewsPage(productId) {
     console.log("Reviews load error:", e);
     body.innerHTML = '<p style="color:#d33;padding:16px;">Failed to load reviews: ' + e.message + '</p>';
   }
+}
+
+
+function openReviewInWebView(url) {
+  if (!container) return;
+  container.innerHTML = '<iframe src="' + url + '" style="width:100%;height:100%;border:0;position:absolute;top:0;left:0;bottom:0;"></iframe>';
 }
