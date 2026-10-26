@@ -4,14 +4,19 @@ const tabbar = document.getElementById("tabbar");
 let globalProducts = [];
 let currentSearchQuery = "";
 
-// The filters currently applied to the grid
+// Filter State
 let appliedFilters = getEmptyFilters();
-// The filters being selected inside the menu (so we don't close it instantly)
 let draftFilters = getEmptyFilters();
-
 let minProductPrice = 0;
 let maxProductPrice = 10000;
 let activeSidebarTab = "sort";
+let currentPage = 1;
+let paginatedCache = [];
+
+// Product Page State
+let currentProduct = null;
+let selectedAttributes = {};
+let productQty = 1;
 
 function getEmptyFilters() {
   return { sort: "relevance", category: null, minPrice: 0, maxPrice: 10000, minDiscount: 0, attributes: {} };
@@ -39,6 +44,7 @@ function handleRoute() {
   else if (hash.startsWith('product-')) navigate("product", hash.split('-')[1], false);
   else navigate(hash, null, false);
 }
+
 async function navigate(pageId, param = null, pushHistory = true) {
   if (pushHistory) {
     if (pageId === "home") history.pushState(null, "", window.location.pathname);
@@ -66,355 +72,144 @@ async function navigate(pageId, param = null, pushHistory = true) {
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.id === pageId));
 }
 
-// --- SEARCH LOGIC ---
-async function initSearchPage() {
-  if (globalProducts.length === 0) {
-    try { const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products?per_page=50`); globalProducts = await res.json(); } catch(e) { return; }
-  }
-  document.getElementById("trending-search").innerHTML = globalProducts.slice(0, 4).map(p => `
-    <div class="card" onclick="navigate('product', ${p.id})"><img src="${p.images[0]?.thumbnail || ''}" loading="lazy"><h3>${p.name}</h3><div class="price">${p.price_html}</div></div>
-  `).join("");
-  renderRecentSearches();
-  setTimeout(() => document.getElementById("search-page-input").focus(), 100);
-}
-function renderRecentSearches() {
-  const recents = JSON.parse(localStorage.getItem("recent_searches") || "[]");
-  const el = document.getElementById("recent-searches");
-  if (recents.length === 0) { el.innerHTML = `<span style="font-size: 13px; color: #888;">No recent searches yet.</span>`; return; }
-  el.innerHTML = recents.map(term => `<div onclick="clickRecent('${term}')" style="padding: 8px 16px; border: 1px solid #eee; border-radius: 8px; font-size: 13px; color: #333; background: #fff; cursor: pointer; display: flex; align-items: center; gap: 8px;"><i class="fa-solid fa-clock-rotate-left" style="color: #999; font-size: 12px;"></i> ${term}</div>`).join("");
-}
-function clickRecent(term) { document.getElementById("search-page-input").value = term; saveSearchHistory(term); goToSearchResults(); }
-function saveSearchHistory(term) {
-  term = term.trim().toLowerCase(); if (term.length < 2) return;
-  let recents = JSON.parse(localStorage.getItem("recent_searches") || "[]");
-  if (!recents.includes(term)) { recents.unshift(term); if (recents.length > 6) recents.pop(); localStorage.setItem("recent_searches", JSON.stringify(recents)); renderRecentSearches(); }
-}
-function clearRecent() { localStorage.removeItem("recent_searches"); renderRecentSearches(); }
-function executeSearch() {
-  const query = document.getElementById("search-page-input").value.trim().toLowerCase();
-  currentSearchQuery = query;
-  const defaultState = document.getElementById("default-search-state");
-  const activeState = document.getElementById("active-search-state");
-  if (query.length === 0) { defaultState.style.display = "block"; activeState.style.display = "none"; return; } 
-  else { defaultState.style.display = "none"; activeState.style.display = "block"; }
-  const filtered = globalProducts.filter(p => p.name.toLowerCase().includes(query));
-  const listEl = document.getElementById("autocomplete-list");
-  if (filtered.length === 0) { listEl.innerHTML = `<p style="font-size:14px; color:#666;">No results for "${query}"</p>`; return; }
-  listEl.innerHTML = filtered.slice(0, 6).map(p => `<div onclick="saveSearchHistory('${p.name.replace(/'/g, "\\'")}'); navigate('product', ${p.id})" style="display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f0f0f0; cursor: pointer;"><img src="${p.images[0]?.thumbnail || ''}" style="width: 40px; height: 40px; border-radius: 6px; object-fit: cover;"><span style="font-size: 15px; font-weight: 500; color: #333;">${p.name}</span></div>`).join("");
-}
-function goToSearchResults() { 
-  saveSearchHistory(currentSearchQuery); 
-  appliedFilters = getEmptyFilters();
-  navigate('search-results'); 
-}
-
-// --- AMAZON STYLE FILTER LOGIC ---
-function initSearchResultsPage() {
-  document.getElementById("results-search-label").textContent = currentSearchQuery || "All Products";
-  
-  if (globalProducts.length > 0) {
-    const prices = globalProducts.map(p => parseInt(p.prices.price) / 100);
-    minProductPrice = Math.floor(Math.min(...prices));
-    maxProductPrice = Math.ceil(Math.max(...prices));
-    if (appliedFilters.minPrice === 0) appliedFilters.minPrice = minProductPrice;
-    if (appliedFilters.maxPrice === 10000) appliedFilters.maxPrice = maxProductPrice;
-  }
-
-  applyFilters(); // Load grid initially
-  buildAmazonSidebar(); // Build menu
-}
-
-function buildAmazonSidebar() {
-  const sidebar = document.getElementById("filter-sidebar");
-  
-  // Build Sidebar Tabs
-  let tabs = [
-    { id: "sort", label: "Sort By" },
-    { id: "price", label: "Price and Deals" },
-    { id: "category", label: "Categories" }
-  ];
-  
-  const allAttributes = [...new Set(globalProducts.flatMap(p => p.attributes?.map(a => a.name) || []))];
-  allAttributes.forEach(attr => tabs.push({ id: `attr-${attr}`, label: attr }));
-
-  sidebar.innerHTML = tabs.map(t => `
-    <div onclick="switchFilterTab('${t.id}')" style="padding: 16px; font-size: 14px; border-bottom: 1px solid #eee; cursor: pointer; background: ${activeSidebarTab === t.id ? '#fff' : '#f9f9f9'}; border-left: 3px solid ${activeSidebarTab === t.id ? '#111' : 'transparent'}; font-weight: ${activeSidebarTab === t.id ? '600' : '400'}; color: ${activeSidebarTab === t.id ? '#111' : '#555'};">
-      ${t.label}
-    </div>
-  `).join("");
-
-  renderFilterContent();
-}
-
-function switchFilterTab(tabId) {
-  activeSidebarTab = tabId;
-  buildAmazonSidebar();
-}
-
-function renderFilterContent() {
-  const content = document.getElementById("filter-content");
-  let html = "";
-
-  if (activeSidebarTab === "sort") {
-    html += `<h3 style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">Sort By</h3>`;
-    html += [
-      {id: 'relevance', label: 'Relevance'},
-      {id: 'price-low', label: 'Price: Low to High'},
-      {id: 'price-high', label: 'Price: High to Low'},
-      {id: 'rating', label: 'Customer Rating'}
-    ].map(s => `
-      <label style="display:flex; align-items:center; gap:12px; font-size:15px; padding:12px 0; cursor:pointer;">
-        <input type="radio" name="sort" value="${s.id}" ${draftFilters.sort === s.id ? 'checked' : ''} onchange="updateDraft('sort', '${s.id}')" style="width:20px; height:20px; accent-color:#111;">
-        <span>${s.label}</span>
-      </label>
-    `).join('');
-  }
-
-  if (activeSidebarTab === "price") {
-    html += `<h3 style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">Price and Deals</h3>`;
-    
-    // Discount Pills
-    html += `<h4 style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">Discount</h4>`;
-    html += `<div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom: 24px;">
-      ${[10, 25, 35, 50, 70].map(d => `
-        <div onclick="updateDraft('minDiscount', ${d === draftFilters.minDiscount ? 0 : d})" style="padding: 8px 16px; border-radius: 20px; border: 1px solid ${draftFilters.minDiscount === d ? '#111' : '#ddd'}; background: ${draftFilters.minDiscount === d ? '#111' : '#fff'}; color: ${draftFilters.minDiscount === d ? '#fff' : '#333'}; font-size: 13px; cursor: pointer;">${d}% Off or more</div>
-      `).join('')}
-    </div>`;
-
-    // Price Slider
-    html += `<h4 style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">Price</h4>`;
-    html += `<div style="font-size: 16px; font-weight: 700; margin-bottom: 16px;">$${draftFilters.minPrice} - $${draftFilters.maxPrice}</div>`;
-    html += `
-      <div style="position:relative; height:30px; margin-bottom: 24px;">
-        <div style="position:absolute; top:50%; left:0; right:0; height:4px; background:#ddd; border-radius:2px; transform:translateY(-50%); z-index:0;"></div>
-        <input type="range" min="${minProductPrice}" max="${maxProductPrice}" value="${draftFilters.minPrice}" oninput="updateDraft('minPrice', parseInt(this.value))" style="position:absolute; width:100%; pointer-events:none; appearance:none; background:none; top:0; z-index:1;">
-        <input type="range" min="${minProductPrice}" max="${maxProductPrice}" value="${draftFilters.maxPrice}" oninput="updateDraft('maxPrice', parseInt(this.value))" style="position:absolute; width:100%; pointer-events:none; appearance:none; background:none; top:0; z-index:2;">
-      </div>
-    `;
-  }
-
-  if (activeSidebarTab === "category") {
-    html += `<h3 style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">Categories</h3>`;
-    const cats = [...new Set(globalProducts.flatMap(p => p.categories.map(c => c.name)))];
-    html += cats.map(c => `
-      <label style="display:flex; align-items:center; gap:12px; font-size:15px; padding:10px 0; cursor:pointer;">
-        <input type="radio" name="cat" ${draftFilters.category === c ? 'checked' : ''} onchange="updateDraft('category', '${c}')" style="width:20px; height:20px; accent-color:#111;">
-        <span>${c}</span>
-      </label>
-    `).join('');
-  }
-
-  if (activeSidebarTab.startsWith("attr-")) {
-    const attrName = activeSidebarTab.replace("attr-", "");
-    html += `<h3 style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">${attrName}</h3>`;
-    const terms = [...new Set(globalProducts.flatMap(p => p.attributes?.filter(a => a.name === attrName).flatMap(a => a.terms.map(t => t.name)) || []))];
-    html += `<div style="display:flex; flex-wrap:wrap; gap:10px;">
-      ${terms.map(t => {
-        const isActive = draftFilters.attributes[attrName] === t;
-        return `<div onclick="toggleDraftAttr('${attrName}', '${t}')" style="padding: 10px 16px; border-radius: 20px; border: 1px solid ${isActive ? '#111' : '#ddd'}; background: ${isActive ? '#111' : '#fff'}; color: ${isActive ? '#fff' : '#333'}; font-size: 14px; cursor: pointer;">${t}</div>`;
-      }).join('')}
-    </div>`;
-  }
-
-  content.innerHTML = html;
-}
-
-// Update Draft without closing or applying
-function updateDraft(key, value) {
-  draftFilters[key] = value;
-  
-  // Handle price slider logic
-  if (key === 'minPrice' && value >= draftFilters.maxPrice) draftFilters.minPrice = draftFilters.maxPrice - 1;
-  if (key === 'maxPrice' && value <= draftFilters.minPrice) draftFilters.maxPrice = draftFilters.minPrice + 1;
-  
-  renderFilterContent();
-  updateFilterCountPreview();
-}
-
-function toggleDraftAttr(attrName, term) {
-  if (draftFilters.attributes[attrName] === term) delete draftFilters.attributes[attrName];
-  else draftFilters.attributes[attrName] = term;
-  renderFilterContent();
-  updateFilterCountPreview();
-}
-
-function updateFilterCountPreview() {
-  // Just a simple visual count for the button
-  const tempProducts = filterProductList(draftFilters);
-  document.getElementById("filter-result-count").textContent = tempProducts.length;
-}
-
-function openFilterSheet() {
-  draftFilters = JSON.parse(JSON.stringify(appliedFilters)); // Copy applied to draft
-  activeSidebarTab = "sort";
-  buildAmazonSidebar();
-  updateFilterCountPreview();
-  
-  document.getElementById("filter-overlay").style.display = "block";
-  setTimeout(() => document.getElementById("filter-overlay").style.opacity = "1", 10);
-  document.getElementById("filter-sheet").style.bottom = "0";
-}
-function closeFilterSheet() {
-  document.getElementById("filter-overlay").style.opacity = "0";
-  document.getElementById("filter-sheet").style.bottom = "-100%";
-  setTimeout(() => document.getElementById("filter-overlay").style.display = "none", 300);
-}
-function resetFilters() {
-  draftFilters = getEmptyFilters();
-  draftFilters.minPrice = minProductPrice;
-  draftFilters.maxPrice = maxProductPrice;
-  buildAmazonSidebar();
-  updateFilterCountPreview();
-}
-
-function applyFilters() {
-  appliedFilters = JSON.parse(JSON.stringify(draftFilters)); // Lock in changes
-  closeFilterSheet();
-  
-  const products = filterProductList(appliedFilters);
-  renderSearchResultsGrid(products);
-}
-
-function filterProductList(filters) {
-  let products = [...globalProducts];
-
-  if (currentSearchQuery) {
-    products = products.filter(p => p.name.toLowerCase().includes(currentSearchQuery) || (p.description || "").toLowerCase().includes(currentSearchQuery));
-  }
-
-  if (filters.category) {
-    products = products.filter(p => p.categories.some(c => c.name === filters.category));
-  }
-
-  products = products.filter(p => {
-    const price = parseInt(p.prices.price) / 100; 
-    return price >= filters.minPrice && price <= filters.maxPrice;
-  });
-
-  if (filters.minDiscount > 0) {
-    products = products.filter(p => {
-      if (!p.on_sale || parseInt(p.prices.regular_price) <= parseInt(p.prices.price)) return false;
-      const percent = Math.round(((parseInt(p.prices.regular_price) - parseInt(p.prices.price)) / parseInt(p.prices.regular_price)) * 100);
-      return percent >= filters.minDiscount;
-    });
-  }
-
-  for (let [key, value] of Object.entries(filters.attributes)) {
-    products = products.filter(p => {
-      if (!p.attributes) return false;
-      const attr = p.attributes.find(a => a.name === key);
-      return attr && attr.terms.some(t => t.name === value);
-    });
-  }
-
-  if (filters.sort === 'price-low') products.sort((a, b) => parseInt(a.prices.price) - parseInt(b.prices.price));
-  if (filters.sort === 'price-high') products.sort((a, b) => parseInt(b.prices.price) - parseInt(a.prices.price));
-  if (filters.sort === 'rating') products.sort((a, b) => parseInt(b.average_rating) - parseInt(a.average_rating));
-
-  return products;
-}
-
-function renderSearchResultsGrid(products) {
-  const grid = document.getElementById("final-results-grid");
-  const wishlist = getWishlist();
-  
-  // Update Badge
-  let activeCount = (appliedFilters.category ? 1 : 0) + (appliedFilters.sort !== 'relevance' ? 1 : 0) + Object.keys(appliedFilters.attributes).length;
-  if (appliedFilters.minPrice > minProductPrice || appliedFilters.maxPrice < maxProductPrice) activeCount++;
-  if (appliedFilters.minDiscount > 0) activeCount++;
-  
-  const badge = document.getElementById("active-filter-count");
-  badge.style.display = activeCount > 0 ? "flex" : "none";
-  badge.textContent = activeCount;
-
-  if (!products || products.length === 0) {
-    grid.innerHTML = `<div style="grid-column: span 2; text-align: center; padding: 40px;"><h3>No products found</h3><p style="color:#666; font-size:14px; margin-top:8px;">Try adjusting your filters.</p></div>`;
-    return;
-  }
-
-  grid.innerHTML = products.map(p => {
-    let discountTag = "";
-    if (p.on_sale && parseInt(p.prices.regular_price) > parseInt(p.prices.price)) {
-      const percent = Math.round(((parseInt(p.prices.regular_price) - parseInt(p.prices.price)) / parseInt(p.prices.regular_price)) * 100);
-      discountTag = `<div style="background: #FFD700; color: #111; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 4px;">${percent}% OFF</div>`;
-    }
-    
-    const isSaved = wishlist.some(item => item.id === p.id);
-    const heartColor = isSaved ? "#FF4B2B" : "#aaa";
-    const heartIcon = isSaved ? "fa-solid fa-heart" : "fa-regular fa-heart";
-
-    return `
-    <div style="background: #fff; border-radius: 12px; padding: 12px; position: relative; box-shadow: 0 2px 8px rgba(0,0,0,0.04); cursor: pointer;" onclick="navigate('product', ${p.id})">
-      <button onclick="event.stopPropagation(); toggleWishlist(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.prices.price}, '${p.images[0]?.thumbnail || ''}')" style="position: absolute; top: 12px; right: 12px; background: none; border: none; z-index: 2;">
-        <i class="${heartIcon}" style="font-size: 18px; color: ${heartColor};"></i>
-      </button>
-      <img src="${p.images[0]?.thumbnail || ''}" style="width: 100%; aspect-ratio: 1/1; object-fit: contain; margin-bottom: 8px;">
-      ${discountTag}
-      <div style="font-size: 15px; font-weight: 700; color: #111; margin-bottom: 4px;">${p.price_html}</div>
-      <h3 style="font-size: 13px; color: #555; line-height: 1.3; margin-bottom: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${p.name}</h3>
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-size: 11px; color: #888;">1 unit</span>
-        <button onclick="event.stopPropagation(); addToCart(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.prices.price}, '${p.images[0]?.thumbnail || ''}')" style="background: #fff; border: 1px solid #008C4A; color: #008C4A; font-weight: 700; font-size: 14px; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer;">+</button>
-      </div>
-    </div>`;
-  }).join("");
-}
-
-// --- OTHER PAGES ---
-async function loadProducts(containerId) {
-  const el = document.getElementById(containerId); if (!el) return;
-  if (globalProducts.length > 0) { renderProductGrid(containerId, globalProducts); return; }
-  el.innerHTML = "<p style='padding:16px;'>Loading products...</p>";
-  try { const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products?per_page=50`); globalProducts = await res.json(); renderProductGrid(containerId, globalProducts); } catch(e) { el.innerHTML = "<p style='padding:16px;'>Error loading products.</p>"; }
-}
-function renderProductGrid(containerId, products) {
-  const el = document.getElementById(containerId); if (!el) return;
-  if (products.length === 0) { el.innerHTML = "<p>No products found.</p>"; return; }
-  el.innerHTML = products.map(p => `<div class="card" onclick="navigate('product', ${p.id})"><img src="${p.images[0]?.thumbnail || ''}" loading="lazy" alt="${p.name}"><h3>${p.name}</h3><div class="price">${p.price_html}</div></div>`).join("");
-}
-
+// --- PRODUCT DETAILS PAGE ---
 async function loadSingleProduct(id) {
-  const el = document.getElementById("product-detail"); el.innerHTML = "<p style='padding:16px;'>Loading product...</p>";
+  const el = document.getElementById("product-detail");
+  const stickyBar = document.getElementById("product-sticky-bar");
+  el.innerHTML = "<p style='padding:16px;'>Loading product...</p>";
+  stickyBar.style.display = "none";
+  
+  productQty = 1;
+  document.getElementById("product-qty").textContent = "1";
+  selectedAttributes = {};
+
   try {
     let p = globalProducts.find(item => item.id == id);
     if (!p) { const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products/${id}`); p = await res.json(); }
+    currentProduct = p;
+
+    // Build Attributes UI
+    let attributesHtml = "";
+    if (p.attributes && p.attributes.length > 0) {
+      p.attributes.forEach(attr => {
+        if (attr.terms.length === 0) return;
+        
+        // Pre-select the first term (Optional, but good for UX)
+        selectedAttributes[attr.name] = attr.terms[0].name;
+        
+        attributesHtml += `
+          <div style="margin-bottom: 24px;">
+            <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: #333;">Select ${attr.name}</h4>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+              ${attr.terms.map((term, index) => `
+                <div onclick="selectAttribute('${attr.name}', '${term.name}')" 
+                     id="attr-${attr.name.replace(/\s/g, '')}-${term.name.replace(/\s/g, '')}"
+                     style="padding: 8px 16px; border-radius: 8px; border: 1px solid ${index === 0 ? '#111' : '#ddd'}; background: ${index === 0 ? '#111' : '#fff'}; color: ${index === 0 ? '#fff' : '#333'}; font-size: 14px; cursor: pointer; transition: 0.2s;">
+                  ${term.name}
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    // Build Full HTML
     el.innerHTML = `
-      <div style="padding-bottom: 80px;">
-        <img src="${p.images[0]?.src}" style="width:100%; border-radius:12px; margin-bottom:16px;">
-        <h1 style="font-size:24px; margin-bottom:8px; color:#111;">${p.name}</h1>
-        <div style="font-size:20px; font-weight:bold; color:#111; margin-bottom:16px;">${p.price_html}</div>
-        <div style="font-size:14px; color:#555; line-height:1.5; margin-bottom:24px;">${p.description || ''}</div>
+      <div style="position: relative;">
+        <i class="fa-solid fa-arrow-left" onclick="history.back()" style="position: absolute; top: 16px; left: 16px; font-size: 20px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 50%; cursor: pointer; z-index: 10;"></i>
+        <img src="${p.images[0]?.src}" style="width:100%; aspect-ratio: 1/1; object-fit: cover; border-bottom: 1px solid #eee;">
       </div>
-      <div style="position:fixed; bottom:60px; left:0; right:0; padding:16px; background:#fff; border-top:1px solid #eee;">
-        <button onclick="addToCart(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.prices.price}, '${p.images[0]?.thumbnail || ''}')" style="width:100%; padding:16px; background:#111; color:#fff; border:none; border-radius:12px; font-size:16px; font-weight:bold;">Add to Cart</button>
-      </div>`;
-  } catch(e) { el.innerHTML = "<p style='padding:16px;'>Error loading product.</p>"; }
+      
+      <div style="padding: 20px 16px;">
+        <div style="font-size: 28px; font-weight: 700; color: #111; margin-bottom: 8px;">${p.price_html}</div>
+        <h1 style="font-size: 22px; font-weight: 600; color: #333; margin-bottom: 16px; line-height: 1.3;">${p.name}</h1>
+        
+        <div style="font-size: 14px; color: #666; line-height: 1.6; margin-bottom: 24px; border-bottom: 1px solid #eee; padding-bottom: 24px;">
+          ${p.description || 'No description available.'}
+        </div>
+
+        ${attributesHtml}
+      </div>
+    `;
+    
+    stickyBar.style.display = "block";
+
+  } catch(e) { 
+    el.innerHTML = "<p style='padding:16px;'>Error loading product.</p>"; 
+    console.log(e);
+  }
 }
 
-// --- WISHLIST & CART ---
-function getWishlist() { return JSON.parse(localStorage.getItem("native_wishlist") || "[]"); }
-function saveWishlist(w) { localStorage.setItem("native_wishlist", JSON.stringify(w)); }
-function toggleWishlist(id, name, price, image) {
-  let w = getWishlist(); let exists = w.find(item => item.id === id);
-  if (exists) { w = w.filter(item => item.id !== id); showToast("Removed from Wishlist"); } 
-  else { w.push({ id, name, price: parseFloat(price), image }); showToast("✓ Added to Wishlist"); }
-  saveWishlist(w);
-  if (window.location.hash === "#search-results") applyFilters();
-  if (window.location.hash === "#wishlist") renderWishlistPage();
-}
-function renderWishlistPage() {
-  const w = getWishlist(); const grid = document.getElementById("wishlist-grid");
-  if (w.length === 0) { grid.innerHTML = "<div style='grid-column: span 2; text-align: center; padding: 40px;'><i class='fa-regular fa-heart' style='font-size:48px; color:#ccc; margin-bottom:16px;'></i><h3>Your wishlist is empty</h3></div>"; return; }
-  grid.innerHTML = w.map(p => `<div class="card" onclick="navigate('product', ${p.id})"><img src="${p.image}" loading="lazy"><div style="padding: 8px 12px;"><h3>${p.name}</h3></div></div>`).join("");
+function selectAttribute(attrName, termName) {
+  selectedAttributes[attrName] = termName;
+  
+  // Update UI colors
+  const container = document.getElementById("product-detail");
+  const pills = container.querySelectorAll(`[id^="attr-${attrName.replace(/\s/g, '')}-"]`);
+  
+  pills.forEach(pill => {
+    // Check if this pill is the selected one
+    if (pill.id === `attr-${attrName.replace(/\s/g, '')}-${termName.replace(/\s/g, '')}`) {
+      pill.style.border = "1px solid #111";
+      pill.style.background = "#111";
+      pill.style.color = "#fff";
+    } else {
+      pill.style.border = "1px solid #ddd";
+      pill.style.background = "#fff";
+      pill.style.color = "#333";
+    }
+  });
 }
 
+function changeProductQty(change) {
+  if (productQty + change < 1) return;
+  productQty += change;
+  document.getElementById("product-qty").textContent = productQty;
+}
+
+function handleAddToCart() {
+  if (!currentProduct) return;
+  
+  // If the product has attributes, ensure they are all selected (they are pre-selected, but good safety)
+  if (currentProduct.attributes && currentProduct.attributes.length > 0) {
+    for (let attr of currentProduct.attributes) {
+      if (!selectedAttributes[attr.name]) {
+        showToast(`Please select ${attr.name}`);
+        return;
+      }
+    }
+  }
+
+  // Create a unique name based on attributes for the cart (e.g. "T-Shirt (Red, Large)")
+  let attributesString = Object.values(selectedAttributes).join(", ");
+  let cartName = currentProduct.name;
+  if (attributesString) {
+    cartName += ` (${attributesString})`;
+  }
+
+  addToCart(currentProduct.id, cartName, currentProduct.prices.price, currentProduct.images[0]?.thumbnail || '', productQty);
+}
+
+// --- CART LOGIC ---
 function getCart() { return JSON.parse(localStorage.getItem("native_cart") || "[]"); }
 function saveCart(cart) { localStorage.setItem("native_cart", JSON.stringify(cart)); updateCartBadge(); }
-function addToCart(id, name, price, image) {
-  let cart = getCart(); let existing = cart.find(item => item.id === id);
-  if (existing) { existing.qty += 1; } else { cart.push({ id, name, price: parseFloat(price), image, qty: 1 }); }
-  saveCart(cart); showToast("✓ Added to Cart");
+
+function addToCart(id, name, price, image, qty = 1) {
+  let cart = getCart();
+  // Check if item with same ID AND same name (attributes) already exists
+  let existing = cart.find(item => item.id === id && item.name === name);
+  
+  if (existing) { 
+    existing.qty += qty; 
+  } else { 
+    cart.push({ id, name, price: parseFloat(price), image, qty: qty }); 
+  }
+  
+  saveCart(cart); 
+  showToast(`✓ Added ${qty} to Cart`);
 }
+
 function updateCartBadge() {
   const cart = getCart(); const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
   const cartTab = document.querySelector('.tab[data-id="cart"]');
@@ -424,6 +219,21 @@ function updateCartBadge() {
     badge.textContent = totalItems; badge.style.display = totalItems > 0 ? "flex" : "none";
   }
 }
+
+// --- OTHER PAGES (Preserved from previous logic) ---
+async function loadProducts(containerId) {
+  const el = document.getElementById(containerId); if (!el) return;
+  if (globalProducts.length > 0) { renderProductGrid(containerId, globalProducts); return; }
+  el.innerHTML = "<p style='padding:16px;'>Loading products...</p>";
+  try { const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products?per_page=50`); globalProducts = await res.json(); renderProductGrid(containerId, globalProducts); } catch(e) { el.innerHTML = "<p style='padding:16px;'>Error loading products.</p>"; }
+}
+
+function renderProductGrid(containerId, products) {
+  const el = document.getElementById(containerId); if (!el) return;
+  if (products.length === 0) { el.innerHTML = "<p>No products found.</p>"; return; }
+  el.innerHTML = products.map(p => `<div class="card" onclick="navigate('product', ${p.id})"><img src="${p.images[0]?.thumbnail || ''}" loading="lazy" alt="${p.name}"><h3>${p.name}</h3><div class="price">${p.price_html}</div></div>`).join("");
+}
+
 function renderCart() {
   const cart = getCart(); const el = document.getElementById("cart-items"); const summary = document.getElementById("cart-summary");
   if (cart.length === 0) { el.innerHTML = "<div style='text-align:center; padding:40px 16px;'><i class='fa-solid fa-cart-shopping' style='font-size:48px; color:#ccc; margin-bottom:16px;'></i><h2>Your cart is empty</h2><p style='color:#666; margin-top:8px;'>Looks like you haven't added anything yet.</p></div>"; summary.style.display = "none"; return; }
@@ -434,10 +244,12 @@ function renderCart() {
   }).join("");
   document.getElementById("cart-total").textContent = `$${(total / 100).toFixed(2)}`; summary.style.display = "block";
 }
+
 function changeQty(id, change) {
-  let cart = getCart(); let item = cart.find(i => i.id === id);
+  let cart = getCart(); let item = cart.find(i => i.id === id); // Note: this is basic, if you have multiple attributes, you might need a unique cart line ID.
   if (item) { item.qty += change; if (item.qty <= 0) cart = cart.filter(i => i.id !== id); saveCart(cart); renderCart(); }
 }
+
 function checkout() { navigate("checkout"); }
 
 updateCartBadge();

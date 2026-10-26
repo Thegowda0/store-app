@@ -1,3 +1,19 @@
-<div id="product-detail" style="padding: 16px;">
-  <p>Loading product...</p>
+<div id="product-detail" style="background: #fff; min-height: 100vh; padding-bottom: 90px;">
+  <p style="padding: 16px;">Loading product...</p>
+</div>
+
+<!-- STICKY BOTTOM BAR -->
+<div id="product-sticky-bar" style="display: none; position: fixed; bottom: 60px; left: 0; right: 0; background: #fff; border-top: 1px solid #eee; padding: 12px 16px; z-index: 100; box-shadow: 0 -4px 12px rgba(0,0,0,0.05);">
+  <div style="display: flex; gap: 12px; align-items: center;">
+    <!-- Quantity Selector -->
+    <div style="display: flex; align-items: center; background: #f5f5f5; border-radius: 8px; padding: 8px 12px; gap: 16px;">
+      <button onclick="changeProductQty(-1)" style="border: none; background: none; font-size: 18px; font-weight: bold; cursor: pointer;">-</button>
+      <span id="product-qty" style="font-size: 16px; font-weight: 600;">1</span>
+      <button onclick="changeProductQty(1)" style="border: none; background: none; font-size: 18px; font-weight: bold; cursor: pointer;">+</button>
+    </div>
+    <!-- Add to Cart Button -->
+    <button id="add-to-cart-btn" onclick="handleAddToCart()" style="flex: 1; padding: 16px; background: #111; color: #fff; border: none; border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer;">
+      Add to Cart
+    </button>
+  </div>
 </div>
