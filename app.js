@@ -383,7 +383,7 @@ async function loadSingleProduct(id) {
         '<div style="font-size: 14px; color: #666; line-height: 1.6; margin-bottom: 24px; border-bottom: 1px solid #eee; padding-bottom: 24px;">' + description + '</div>' +
       '</div>';
     var mainPrice = (p.prices && p.prices.price) ? (parseInt(p.prices.price) / 100).toFixed(2) : "0.00";
-    document.getElementById("main-btn-price").textContent = mainPrice;
+    var __mp = document.getElementById("main-btn-price"); if (__mp) __mp.textContent = mainPrice;
     stickyBar.style.display = "block";
   } catch(e) {
     console.log("Product load error:", e);
