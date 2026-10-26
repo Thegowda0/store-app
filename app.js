@@ -62,6 +62,7 @@ async function navigate(pageId, param, pushHistory) {
       if (pageId === "search-results") initSearchResultsPage();
       if (pageId === "wishlist") renderWishlistPage();
       if (pageId === "product" && param) loadSingleProduct(param);
+      if (pageId === "reviews" && param) loadReviewsPage(param);
       if (pageId === "cart") renderCart();
     } catch (e) { container.innerHTML = "<p style='padding:20px;'>Error loading page: " + pageId + "</p>"; }
   } else {
@@ -119,6 +120,20 @@ async function loadSingleProduct(id) {
     }
     if (!p || !p.id) throw new Error("Product not found");
     _currentProduct = p;
+
+    // Handle grouped products
+    if (p.type === "grouped") {
+      await renderGroupedProduct(p);
+      return;
+    }
+
+    // Handle external products
+    if (p.type === "external") {
+      renderExternalProduct(p);
+      return;
+    }
+
+    // Simple and variable products
     _productImages = (p.images || []).map(function(img) { return img.src; });
     if (_productImages.length === 0) _productImages = [""];
     if (p.attributes && p.attributes.length > 0) {
@@ -132,6 +147,103 @@ async function loadSingleProduct(id) {
     el.innerHTML = '<div style="padding:20px; text-align:center;"><p>Error loading product.</p><p style="font-size:12px; color:#888;">' + e.message + '</p><button onclick="history.back()" style="margin-top:16px; padding:10px 20px; background:#111; color:#fff; border:none; border-radius:8px;">Go Back</button></div>';
   }
 }
+
+async function renderGroupedProduct(p) {
+  var el = document.getElementById("product-detail");
+  var stickyBar = document.getElementById("product-sticky-bar");
+  stickyBar.style.display = "none";
+
+  var html = "";
+  html += '<div style="position: relative; background: #fff;">';
+  html += '<img src="' + ((p.images && p.images[0]) ? p.images[0].src : "") + '" style="width:100%; aspect-ratio: 1/1; object-fit: cover;">';
+  html += '<div style="position: absolute; top: 12px; left: 16px;"><div onclick="navigate(\'home\', null, true)" style="width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; cursor: pointer;"><i class="fa-solid fa-arrow-down" style="color: #111;"></i></div></div>';
+  html += '</div>';
+
+  html += '<div style="background: #fff; padding: 16px;">';
+  html += '<h1 style="font-size: 20px; font-weight: 600; color: #333; margin-bottom: 12px;">' + (p.name || "") + '</h1>';
+  html += '<div style="font-size: 14px; color: #555; line-height: 1.6;">' + (p.description || "Grouped product.") + '</div>';
+  html += '</div>';
+
+  html += '<div style="background: #fff; padding: 16px; margin-top: 8px;">';
+  html += '<h3 style="font-size: 16px; font-weight: 700; margin-bottom: 12px;">Products in this group</h3>';
+  html += '<div id="grouped-items-container"><p style="color:#888;">Loading group items...</p></div>';
+  html += '</div>';
+
+  el.innerHTML = html;
+
+  // Fetch grouped product ids
+  try {
+    var res = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products?include=" + (p.grouped_products || []).join(",") + "&per_page=50");
+    var items = await res.json();
+    var container = document.getElementById("grouped-items-container");
+    if (!items || items.length === 0) { container.innerHTML = "<p style='color:#888;'>No items in this group.</p>"; return; }
+    container.innerHTML = items.map(function(item) {
+      var thumb = (item.images && item.images[0]) ? item.images[0].thumbnail : "";
+      var inCart = getCart().find(function(c) { return c.id === item.id && c.name === item.name; });
+      var btnHtml = inCart
+        ? '<div style="display:flex;align-items:center;gap:12px;background:#111;color:#fff;padding:8px 12px;border-radius:8px;font-size:14px;font-weight:700;"><button onclick="groupItemDecrement(' + item.id + ')" style="border:none;background:none;color:#fff;font-size:18px;cursor:pointer;padding:0 4px;">-</button><span>' + inCart.qty + '</span><button onclick="groupItemIncrement(' + item.id + ')" style="border:none;background:none;color:#fff;font-size:18px;cursor:pointer;padding:0 4px;">+</button></div>'
+        : '<button onclick="groupItemAdd(' + item.id + ')" style="padding:10px 20px;background:#111;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">Add</button>';
+      return '<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #eee;">' +
+        '<img src="' + thumb + '" style="width:60px;height:60px;border-radius:8px;object-fit:cover;background:#f5f5f5;">' +
+        '<div style="flex:1;"><div style="font-size:14px;font-weight:600;color:#111;">' + item.name + '</div><div style="font-size:13px;color:#666;margin-top:2px;">' + (item.price_html || "").replace(/<[^>]*>/g, "").trim() + '</div></div>' +
+        btnHtml + '</div>';
+    }).join("");
+  } catch(e) {
+    document.getElementById("grouped-items-container").innerHTML = "<p style='color:#d33;'>Failed to load group items.</p>";
+  }
+}
+
+function groupItemAdd(id) {
+  var item = globalProducts.find(function(x) { return x.id === id; });
+  if (!item) { fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/" + id).then(function(r) { return r.json(); }).then(function(item) { _groupAddItem(item); }); return; }
+  _groupAddItem(item);
+}
+function _groupAddItem(item) {
+  var cart = getCart();
+  cart.push({ id: item.id, name: item.name, price: parseFloat(item.prices.price), image: (item.images && item.images[0]) ? item.images[0].thumbnail : "", qty: 1 });
+  saveCart(cart);
+  if (_currentProduct && _currentProduct.type === "grouped") renderGroupedProduct(_currentProduct);
+}
+function groupItemIncrement(id) {
+  var cart = getCart();
+  var item = cart.find(function(c) { return c.id === id; });
+  if (item) { item.qty += 1; saveCart(cart); if (_currentProduct) renderGroupedProduct(_currentProduct); }
+}
+function groupItemDecrement(id) {
+  var cart = getCart();
+  var idx = -1;
+  for (var i = 0; i < cart.length; i++) { if (cart[i].id === id) { idx = i; break; } }
+  if (idx > -1) {
+    cart[idx].qty -= 1;
+    if (cart[idx].qty <= 0) cart.splice(idx, 1);
+    saveCart(cart);
+    if (_currentProduct) renderGroupedProduct(_currentProduct);
+  }
+}
+
+function renderExternalProduct(p) {
+  var el = document.getElementById("product-detail");
+  var stickyBar = document.getElementById("product-sticky-bar");
+  stickyBar.style.display = "none";
+
+  var html = "";
+  html += '<div style="position: relative; background: #fff;">';
+  html += '<img src="' + ((p.images && p.images[0]) ? p.images[0].src : "") + '" style="width:100%; aspect-ratio: 1/1; object-fit: cover;">';
+  html += '<div style="position: absolute; top: 12px; left: 16px;"><div onclick="navigate(\'home\', null, true)" style="width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; cursor: pointer;"><i class="fa-solid fa-arrow-down" style="color: #111;"></i></div></div>';
+  html += '</div>';
+  html += '<div style="background: #fff; padding: 16px;">';
+  html += '<div style="font-size: 26px; font-weight: 800; color: #111; margin-bottom: 8px;">' + (p.price_html || "") + '</div>';
+  html += '<h1 style="font-size: 20px; font-weight: 600; color: #333; margin-bottom: 16px;">' + (p.name || "") + '</h1>';
+  html += '<div style="font-size: 14px; color: #555; line-height: 1.6; margin-bottom: 24px;">' + (p.description || "") + '</div>';
+  if (p.external_url) {
+    html += '<a href="' + p.external_url + '" target="_blank" rel="noopener" style="display:block;text-align:center;padding:16px;background:#111;color:#fff;text-decoration:none;border-radius:12px;font-size:16px;font-weight:700;">Buy on ' + (p.button_text || "external site") + '</a>';
+  } else {
+    html += '<p style="color:#d33;">No external URL configured.</p>';
+  }
+  html += '</div>';
+  el.innerHTML = html;
+}
+
 
 function renderProductPage(p) {
   var el = document.getElementById("product-detail");
@@ -252,15 +364,12 @@ function renderProductPage(p) {
     }
   }
 
-  // Reviews
-  html += '<div style="background: #fff; padding: 16px; margin-top: 8px;">';
-  html += '<h3 style="font-size: 16px; font-weight: 700; margin-bottom: 12px;">Reviews (' + (p.review_count || 0) + ')</h3>';
-  if (p.review_count > 0) {
-    html += '<div style="font-size: 14px; color: #666;">Customer reviews are available.</div>';
-  } else {
-    html += '<div style="font-size: 14px; color: #888;">No reviews yet. Be the first to review this product.</div>';
-  }
-  html += '</div>';
+  // Reviews — clickable card
+  html += '<div onclick="navigate(\'reviews\', ' + p.id + ', true)" style="background: #fff; padding: 16px; margin-top: 8px; cursor: pointer; display: flex; align-items: center; justify-content: space-between;">';
+  html += '<div><h3 style="font-size: 16px; font-weight: 700; margin-bottom: 4px;">Reviews (' + (p.review_count || 0) + ')</h3>';
+  if (p.review_count > 0) html += '<div style="font-size: 13px; color: #666;">Tap to read reviews</div>';
+  else html += '<div style="font-size: 13px; color: #888;">No reviews yet</div>';
+  html += '</div><i class="fa-solid fa-chevron-right" style="color: #888;"></i></div>';
 
   el.innerHTML = html;
 
@@ -369,6 +478,7 @@ function decrementProductInCart() {
 function handleStickyAddToCart() {
   if (!_currentProduct) return;
   var p = _currentProduct;
+  if (p.is_in_stock === false) { showToast("This product is out of stock"); return; }
   if (p.attributes && p.attributes.length > 0) {
     var missing = null;
     for (var i = 0; i < p.attributes.length; i++) {
@@ -999,3 +1109,71 @@ function buildTabbar() {
 buildTabbar();
 updateCartBadge();
 handleRoute();
+
+
+// ==================== REVIEWS PAGE ====================
+async function loadReviewsPage(productId) {
+  var body = document.getElementById("reviews-page-body");
+  if (!body) return;
+  body.innerHTML = "<p style='padding:16px;'>Loading reviews...</p>";
+  try {
+    var p = globalProducts.find(function(x) { return x.id == productId; });
+    if (!p) {
+      var pres = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/" + productId);
+      p = await pres.json();
+    }
+    var res = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/reviews?product=" + productId + "&per_page=50");
+    var reviews = [];
+    if (res.ok) {
+      reviews = await res.json();
+    } else {
+      // fallback to product reviews if endpoint not supported
+      reviews = p.reviews || [];
+    }
+
+    var totalReviews = reviews.length;
+    var avgRating = parseFloat(p.average_rating || 0);
+    var counts = [0,0,0,0,0]; // 1★ to 5★
+    reviews.forEach(function(r) { var s = parseInt(r.rating || 0); if (s >= 1 && s <= 5) counts[s-1] += 1; });
+
+    var html = "";
+
+    // Summary card
+    html += '<div style="background:#fff;padding:16px;border-radius:12px;margin-bottom:12px;">';
+    html += '<div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">';
+    html += '<div style="text-align:center;"><div style="font-size:36px;font-weight:800;color:#111;">' + (avgRating ? avgRating.toFixed(1) : "0.0") + '</div><div style="color:#FFD700;font-size:14px;">★★★★★</div><div style="font-size:12px;color:#888;margin-top:2px;">' + totalReviews + ' reviews</div></div>';
+    html += '<div style="flex:1;">';
+    for (var star = 5; star >= 1; star--) {
+      var c = counts[star-1];
+      var pct = totalReviews > 0 ? (c / totalReviews * 100) : 0;
+      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><span style="font-size:12px;width:20px;">' + star + '★</span><div style="flex:1;height:8px;background:#eee;border-radius:4px;overflow:hidden;"><div style="width:' + pct + '%;height:100%;background:#FFD700;"></div></div><span style="font-size:11px;color:#888;width:24px;text-align:right;">' + c + '</span></div>';
+    }
+    html += '</div></div>';
+    html += '<button onclick="navigate(\'webview\', \'review-form/' + productId + '\', true)" style="width:100%;padding:12px;background:#111;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">Write a Review</button>';
+    html += '</div>';
+
+    // Review list
+    if (reviews.length === 0) {
+      html += '<div style="background:#fff;padding:40px 16px;border-radius:12px;text-align:center;"><i class="fa-regular fa-comment-dots" style="font-size:48px;color:#ccc;margin-bottom:12px;"></i><p style="color:#666;">No reviews yet. Be the first to review this product.</p></div>';
+    } else {
+      reviews.forEach(function(r) {
+        var stars = "";
+        for (var s = 0; s < 5; s++) stars += (s < r.rating ? "★" : "☆");
+        var date = r.date_created ? new Date(r.date_created).toLocaleDateString() : "";
+        var verified = r.verified ? '<span style="font-size:10px;color:#008C4A;background:#e6f7ee;padding:2px 6px;border-radius:4px;margin-left:6px;">Verified</span>' : "";
+        html += '<div style="background:#fff;padding:16px;border-radius:12px;margin-bottom:10px;">';
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">';
+        html += '<div><div style="font-size:14px;font-weight:700;color:#111;">' + (r.reviewer || "Anonymous") + verified + '</div><div style="color:#FFD700;font-size:13px;">' + stars + '</div></div>';
+        html += '<div style="font-size:11px;color:#888;">' + date + '</div>';
+        html += '</div>';
+        html += '<div style="font-size:14px;color:#333;line-height:1.6;">' + (r.review || "") + '</div>';
+        html += '</div>';
+      });
+    }
+
+    body.innerHTML = html;
+  } catch(e) {
+    console.log("Reviews load error:", e);
+    body.innerHTML = '<p style="color:#d33;padding:16px;">Failed to load reviews: ' + e.message + '</p>';
+  }
+}

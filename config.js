@@ -1,6 +1,7 @@
 const APP_CONFIG = {
   siteUrl: "https://hckimg.site", 
   nativePages: {
+    reviews: "reviews.html",
     home: "home.html",
     shop: "shop.html",
     cart: "cart.html",
