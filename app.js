@@ -342,143 +342,12 @@ function renderSearchResultsGrid(products) {
 }
 
 // --- PRODUCT DETAILS PAGE ---
-async function loadSingleProduct(id) {
-  var el = document.getElementById("product-detail");
-  var stickyBar = document.getElementById("product-sticky-bar");
-  if (!el || !stickyBar) return;
-  el.innerHTML = "<p style='padding:16px;'>Loading product...</p>";
-  stickyBar.style.display = "none";
-  selectedAttributes = {};
-  try {
-    var p = globalProducts.find(function(item) { return item.id == id; });
-    if (!p) {
-      var res = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/" + id);
-      if (!res.ok) throw new Error("API error: " + res.status);
-      p = await res.json();
-    }
-    if (!p || !p.id) throw new Error("Product not found");
-    currentProduct = p;
-    if (p.attributes && p.attributes.length > 0) {
-      p.attributes.forEach(function(attr) {
-        if (attr.terms && attr.terms.length > 0) selectedAttributes[attr.name] = attr.terms[0].name;
-      });
-    }
-    var imgSrc = (p.images && p.images[0] && p.images[0].src) ? p.images[0].src : "";
-    var thumbSrc = (p.images && p.images[0] && p.images[0].thumbnail) ? p.images[0].thumbnail : "";
-    var priceHtml = p.price_html || "";
-    var reviewCount = p.review_count || 0;
-    var description = p.description || "No description available.";
-    var safeName = (p.name || "").replace(/'/g, "\\'");
-    var priceVal = (p.prices && p.prices.price) ? p.prices.price : 0;
-    el.innerHTML =
-      '<div style="position: relative;">' +
-        '<i class="fa-solid fa-arrow-left" onclick="history.back()" style="position: absolute; top: 16px; left: 16px; font-size: 20px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 50%; cursor: pointer; z-index: 10; backdrop-filter: blur(4px);"></i>' +
-        '<i class="fa-regular fa-heart" onclick="toggleWishlist(' + p.id + ', \'' + safeName + '\', ' + priceVal + ', \'' + thumbSrc + '\')" style="position: absolute; top: 16px; right: 16px; font-size: 20px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 50%; cursor: pointer; z-index: 10; backdrop-filter: blur(4px);"></i>' +
-        '<img src="' + imgSrc + '" style="width:100%; aspect-ratio: 1/1; object-fit: cover; border-bottom: 1px solid #eee;">' +
-      '</div>' +
-      '<div style="padding: 20px 16px;">' +
-        '<div style="font-size: 28px; font-weight: 800; color: #111; margin-bottom: 8px;">' + priceHtml + '</div>' +
-        '<h1 style="font-size: 24px; font-weight: 600; color: #333; margin-bottom: 16px; line-height: 1.3;">' + p.name + '</h1>' +
-        '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 24px;"><div style="color: #FFD700; font-size: 14px;">★★★★★</div><span style="font-size: 13px; color: #888;">(' + reviewCount + ' reviews)</span></div>' +
-        '<div style="font-size: 14px; color: #666; line-height: 1.6; margin-bottom: 24px; border-bottom: 1px solid #eee; padding-bottom: 24px;">' + description + '</div>' +
-      '</div>';
-    var mainPrice = (p.prices && p.prices.price) ? (parseInt(p.prices.price) / 100).toFixed(2) : "0.00";
-    var __mp = document.getElementById("main-btn-price"); if (__mp) __mp.textContent = mainPrice;
-    stickyBar.style.display = "block";
-  } catch(e) {
-    console.log("Product load error:", e);
-    el.innerHTML = '<div style="padding:20px; text-align:center;"><p>Error loading product.</p><p style="font-size:12px; color:#888; margin-top:8px;">' + e.message + '</p><button onclick="history.back()" style="margin-top:16px; padding:10px 20px; background:#111; color:#fff; border:none; border-radius:8px;">Go Back</button></div>';
-  }
-}
 
 // --- VARIATION BOTTOM SHEET LOGIC ---
-function openVariationSheet() {
-  if (!currentProduct) return;
-  var sheetImg = document.getElementById("sheet-img");
-  var sheetPrice = document.getElementById("sheet-price");
-  if (sheetImg) sheetImg.src = (currentProduct.images && currentProduct.images[0]) ? currentProduct.images[0].src : '';
-  if (sheetPrice) sheetPrice.textContent = "$" + ((parseInt(currentProduct.prices.price) / 100).toFixed(2));
-  sheetQty = 1;
-  var qtyEl = document.getElementById("sheet-qty");
-  if (qtyEl) qtyEl.textContent = sheetQty;
 
-  var attributesHtml = "";
-  if (currentProduct.attributes && currentProduct.attributes.length > 0) {
-    currentProduct.attributes.forEach(function(attr) {
-      if (!attr.terms || attr.terms.length === 0) return;
-      attributesHtml += '<div style="margin-bottom: 24px;"><div style="display: flex; justify-content: space-between; margin-bottom: 12px;"><h4 style="font-size: 14px; font-weight: 700; color: #333; text-transform: uppercase;">' + attr.name + '</h4></div><div style="display: flex; flex-wrap: wrap; gap: 10px;">';
-      attr.terms.forEach(function(term) {
-        var isSelected = selectedAttributes[attr.name] === term.name;
-        attributesHtml += '<div onclick="selectSheetAttribute(\'' + attr.name + '\', \'' + term.name + '\')" id="sheet-attr-' + attr.name.replace(/\s/g, '') + '-' + term.name.replace(/\s/g, '') + '" style="padding: 10px 18px; border-radius: 50px; border: 1px solid ' + (isSelected ? '#111' : '#ddd') + '; background: ' + (isSelected ? '#111' : '#fff') + '; color: ' + (isSelected ? '#fff' : '#333') + '; font-size: 14px; cursor: pointer; transition: 0.2s; font-weight: 500;">' + term.name + '</div>';
-      });
-      attributesHtml += '</div></div>';
-    });
-  } else {
-    attributesHtml = '<p style="color: #666; text-align: center; padding: 20px;">No options needed for this product.</p>';
-  }
 
-  var sheetAttrs = document.getElementById("sheet-attributes");
-  if (sheetAttrs) sheetAttrs.innerHTML = attributesHtml;
 
-  var overlay = document.getElementById("variation-overlay");
-  var sheet = document.getElementById("variation-sheet");
-  if (overlay) overlay.style.display = "block";
-  setTimeout(function() {
-    if (overlay) overlay.style.opacity = "1";
-    if (sheet) sheet.style.bottom = "0";
-  }, 10);
-}
 
-function closeVariationSheet() {
-  var overlay = document.getElementById("variation-overlay");
-  var sheet = document.getElementById("variation-sheet");
-  if (overlay) overlay.style.opacity = "0";
-  if (sheet) sheet.style.bottom = "-100%";
-  setTimeout(function() {
-    if (overlay) overlay.style.display = "none";
-  }, 300);
-}
-
-function selectSheetAttribute(attrName, termName) {
-  selectedAttributes[attrName] = termName;
-  var sheetContent = document.getElementById("sheet-attributes");
-  if (!sheetContent) return;
-  var pills = sheetContent.querySelectorAll('[id^="sheet-attr-' + attrName.replace(/\s/g, '') + '-"]');
-  pills.forEach(function(pill) {
-    if (pill.id === "sheet-attr-" + attrName.replace(/\s/g, '') + "-" + termName.replace(/\s/g, '')) {
-      pill.style.border = "1px solid #111"; pill.style.background = "#111"; pill.style.color = "#fff";
-    } else {
-      pill.style.border = "1px solid #ddd"; pill.style.background = "#fff"; pill.style.color = "#333";
-    }
-  });
-}
-
-function changeSheetQty(change) {
-  if (sheetQty + change < 1) return;
-  sheetQty += change;
-  var qtyEl = document.getElementById("sheet-qty");
-  if (qtyEl) qtyEl.textContent = sheetQty;
-}
-
-function confirmAddToCart() {
-  if (!currentProduct) return;
-  var attributesString = Object.values(selectedAttributes).join(", ");
-  var cartName = currentProduct.name;
-  if (attributesString) cartName += " (" + attributesString + ")";
-  addToCart(currentProduct.id, cartName, currentProduct.prices.price, (currentProduct.images[0] ? currentProduct.images[0].thumbnail : ''), sheetQty);
-  closeVariationSheet();
-  var bar = document.getElementById("product-sticky-bar");
-  if (!bar) return;
-  var btn = bar.querySelector("button");
-  if (!btn) return;
-  var originalHtml = btn.innerHTML;
-  btn.innerHTML = '<i class="fa-solid fa-check"></i> Added to Cart!';
-  btn.style.background = "#008C4A";
-  setTimeout(function() {
-    btn.innerHTML = originalHtml;
-    btn.style.background = "#111";
-  }, 2000);
-}
 
 // --- UTILITIES & OTHER PAGES ---
 function getCart() { return JSON.parse(localStorage.getItem("native_cart") || "[]"); }
@@ -667,3 +536,312 @@ navigate = async function(pageId, param, pushHistory) {
   await _origNavigate(pageId, param, pushHistory);
   setTimeout(forceBuildTabbar, 20);
 };
+
+// ============ PRODUCT PAGE — FULL BUILD ============
+var _currentProduct = null;
+var _selectedAttributes = {};
+var _productQty = 1;
+var _productImages = [];
+var _viewerIndex = 0;
+var _pendingSmartAdd = null;
+
+async function loadSingleProduct(id) {
+  var el = document.getElementById("product-detail");
+  var stickyBar = document.getElementById("product-sticky-bar");
+  if (!el || !stickyBar) return;
+  el.innerHTML = "<p style='padding:16px;'>Loading product...</p>";
+  stickyBar.style.display = "none";
+  _selectedAttributes = {};
+  _productQty = 1;
+
+  try {
+    var p = globalProducts.find(function(item) { return item.id == id; });
+    if (!p) {
+      var res = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/" + id);
+      if (!res.ok) throw new Error("API error: " + res.status);
+      p = await res.json();
+    }
+    if (!p || !p.id) throw new Error("Product not found");
+    _currentProduct = p;
+
+    _productImages = (p.images || []).map(function(img) { return img.src; });
+    if (_productImages.length === 0) _productImages = [""];
+
+    // Auto-select first attribute term
+    if (p.attributes && p.attributes.length > 0) {
+      p.attributes.forEach(function(attr) {
+        if (attr.terms && attr.terms.length > 0) _selectedAttributes[attr.name] = attr.terms[0].name;
+      });
+    }
+
+    renderProductPage(p);
+  } catch(e) {
+    console.log("Product load error:", e);
+    el.innerHTML = '<div style="padding:20px; text-align:center;"><p>Error loading product.</p><p style="font-size:12px; color:#888; margin-top:8px;">' + e.message + '</p><button onclick="history.back()" style="margin-top:16px; padding:10px 20px; background:#111; color:#fff; border:none; border-radius:8px;">Go Back</button></div>';
+  }
+}
+
+function renderProductPage(p) {
+  var el = document.getElementById("product-detail");
+  var stickyBar = document.getElementById("product-sticky-bar");
+  var mainImg = _productImages[0] || "";
+  var category = (p.categories && p.categories.length > 0) ? p.categories[0].name : "";
+  var categorySlug = (p.categories && p.categories.length > 0) ? p.categories[0].slug : "";
+  var brand = (p.brands && p.brands.length > 0) ? p.brands[0].name : "";
+
+  var html = "";
+
+  // --- HEADER IMAGE WITH GLASSOMORPHIC BUTTONS ---
+  html += '<div style="position: relative; background: #fff;">';
+  html += '<img id="main-product-img" onclick="openImageViewer(0)" src="' + mainImg + '" style="width:100%; aspect-ratio: 1/1; object-fit: cover; cursor: pointer;">';
+  // Glass header
+  html += '<div style="position: absolute; top: 0; left: 0; right: 0; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">';
+  html += '  <div onclick="navigate(\'home\', null, true)" style="width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"><i class="fa-solid fa-arrow-down" style="color: #111; font-size: 16px;"></i></div>';
+  html += '  <div style="display: flex; gap: 8px;">';
+  html += '    <div onclick="toggleWishlist(' + p.id + ', \'' + (p.name || "").replace(/'/g, "\\'") + '\', ' + (p.prices ? p.prices.price : 0) + ', \'' + ((p.images && p.images[0]) ? p.images[0].thumbnail : '') + '\')" style="width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"><i class="fa-regular fa-heart" style="color: #111; font-size: 16px;"></i></div>';
+  html += '    <div onclick="navigate(\'search\', null, true)" style="width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"><i class="fa-solid fa-magnifying-glass" style="color: #111; font-size: 16px;"></i></div>';
+  html += '    <div onclick="shareProduct(\'' + (p.name || "").replace(/'/g, "\\'") + '\', \'' + (p.permalink || "") + '\')" style="width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"><i class="fa-solid fa-share-nodes" style="color: #111; font-size: 16px;"></i></div>';
+  html += '  </div>';
+  html += '</div>';
+  html += '</div>';
+
+  // --- THUMBNAILS (under image) ---
+  if (_productImages.length > 1) {
+    html += '<div style="display: flex; gap: 8px; padding: 12px 16px; overflow-x: auto; background: #fff; border-bottom: 1px solid #eee;">';
+    _productImages.forEach(function(img, i) {
+      html += '<img onclick="openImageViewer(' + i + ')" src="' + img + '" style="width: 60px; height: 60px; border-radius: 8px; object-fit: cover; cursor: pointer; border: 1px solid #eee;">';
+    });
+    html += '</div>';
+  }
+
+  // --- TITLE + PRICE BLOCK ---
+  html += '<div style="background: #fff; padding: 16px;">';
+  html += '<div style="font-size: 26px; font-weight: 800; color: #111; margin-bottom: 8px;">' + (p.price_html || "") + '</div>';
+  html += '<h1 style="font-size: 20px; font-weight: 600; color: #333; margin-bottom: 12px; line-height: 1.3;">' + (p.name || "") + '</h1>';
+  html += '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">';
+  html += '<div style="color: #FFD700; font-size: 14px;">★★★★★</div>';
+  html += '<span style="font-size: 13px; color: #888;">(' + (p.review_count || 0) + ' reviews)</span>';
+  html += '</div>';
+
+  // --- BRAND + CATEGORY CHIPS ---
+  if (brand || category) {
+    html += '<div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">';
+    if (brand) html += '<div onclick="navigate(\'webview\', \'brand/' + (p.brands[0].slug || "") + '\', true)" style="padding: 6px 12px; background: #f0f0f0; border-radius: 20px; font-size: 12px; font-weight: 600; color: #333; cursor: pointer;">Brand: ' + brand + '</div>';
+    if (category) html += '<div onclick="navigate(\'webview\', \'category/' + categorySlug + '\', true)" style="padding: 6px 12px; background: #f0f0f0; border-radius: 20px; font-size: 12px; font-weight: 600; color: #333; cursor: pointer;">Category: ' + category + '</div>';
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // --- ATTRIBUTES (INLINE) ---
+  if (p.attributes && p.attributes.length > 0) {
+    html += '<div style="background: #fff; padding: 16px; margin-top: 8px;">';
+    p.attributes.forEach(function(attr) {
+      if (!attr.terms || attr.terms.length === 0) return;
+      html += '<div style="margin-bottom: 20px;">';
+      html += '<div style="display: flex; justify-content: space-between; margin-bottom: 10px;">';
+      html += '<h4 style="font-size: 13px; font-weight: 700; color: #333; text-transform: uppercase;">' + attr.name + '</h4>';
+      html += '<span style="font-size: 12px; color: #888;">' + _selectedAttributes[attr.name] + '</span>';
+      html += '</div>';
+      html += '<div style="display: flex; flex-wrap: wrap; gap: 8px;">';
+      attr.terms.forEach(function(term) {
+        var isSelected = _selectedAttributes[attr.name] === term.name;
+        var attrKey = attr.name.replace(/\s/g, '');
+        var termKey = term.name.replace(/\s/g, '');
+        html += '<div onclick="selectProductAttribute(\'' + attr.name + '\', \'' + term.name + '\')" id="prod-attr-' + attrKey + '-' + termKey + '" style="padding: 10px 18px; border-radius: 50px; border: 1px solid ' + (isSelected ? '#111' : '#ddd') + '; background: ' + (isSelected ? '#111' : '#fff') + '; color: ' + (isSelected ? '#fff' : '#333') + '; font-size: 14px; cursor: pointer; font-weight: 500;">' + term.name + '</div>';
+      });
+      html += '</div></div>';
+    });
+    html += '</div>';
+  }
+
+  // --- PRODUCT INFORMATION ---
+  html += '<div style="background: #fff; padding: 16px; margin-top: 8px;">';
+  html += '<h3 style="font-size: 16px; font-weight: 700; margin-bottom: 12px;">Product Information</h3>';
+  html += '<div style="font-size: 14px; color: #555; line-height: 1.6;">' + (p.description || p.short_description || "No description available.") + '</div>';
+  if (p.sku) html += '<div style="margin-top: 12px; font-size: 13px; color: #888;">SKU: ' + p.sku + '</div>';
+  if (p.is_in_stock === false) html += '<div style="margin-top: 8px; font-size: 13px; color: #d33; font-weight: 600;">Out of Stock</div>';
+  else html += '<div style="margin-top: 8px; font-size: 13px; color: #008C4A; font-weight: 600;">In Stock</div>';
+  html += '</div>';
+
+  // --- SIMILAR PRODUCTS (same category) ---
+  if (categorySlug) {
+    var similar = globalProducts.filter(function(x) { return x.id !== p.id && x.categories.some(function(c) { return c.slug === categorySlug; }); }).slice(0, 10);
+    if (similar.length > 0) {
+      html += '<div style="background: #fff; padding: 16px; margin-top: 8px;">';
+      html += '<h3 style="font-size: 16px; font-weight: 700; margin-bottom: 12px;">Similar Products</h3>';
+      html += '<div style="display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px;">';
+      similar.forEach(function(s) {
+        html += '<div onclick="navigate(\'product\', ' + s.id + ')" style="min-width: 140px; cursor: pointer;">';
+        html += '<img src="' + ((s.images && s.images[0]) ? s.images[0].thumbnail : '') + '" style="width: 140px; height: 140px; border-radius: 8px; object-fit: cover; background: #f5f5f5;">';
+        html += '<div style="font-size: 13px; font-weight: 600; margin-top: 6px; color: #111; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' + s.name + '</div>';
+        html += '<div style="font-size: 12px; color: #666; margin-top: 2px;">' + (s.price_html || "").replace(/<[^>]*>/g, "").trim() + '</div>';
+        html += '</div>';
+      });
+      html += '</div></div>';
+    }
+  }
+
+  // --- TOP PRODUCTS IN CATEGORY (sorted by rating) ---
+  if (categorySlug) {
+    var topProducts = globalProducts.filter(function(x) { return x.id !== p.id && x.categories.some(function(c) { return c.slug === categorySlug; }); }).sort(function(a, b) { return parseFloat(b.average_rating || 0) - parseFloat(a.average_rating || 0); }).slice(0, 10);
+    if (topProducts.length > 0 && topProducts[0].average_rating > 0) {
+      html += '<div style="background: #fff; padding: 16px; margin-top: 8px;">';
+      html += '<h3 style="font-size: 16px; font-weight: 700; margin-bottom: 12px;">Top Rated in ' + category + '</h3>';
+      html += '<div style="display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px;">';
+      topProducts.forEach(function(s) {
+        html += '<div onclick="navigate(\'product\', ' + s.id + ')" style="min-width: 140px; cursor: pointer;">';
+        html += '<img src="' + ((s.images && s.images[0]) ? s.images[0].thumbnail : '') + '" style="width: 140px; height: 140px; border-radius: 8px; object-fit: cover; background: #f5f5f5;">';
+        html += '<div style="font-size: 13px; font-weight: 600; margin-top: 6px; color: #111; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' + s.name + '</div>';
+        html += '<div style="font-size: 12px; color: #666; margin-top: 2px;">★ ' + (parseFloat(s.average_rating || 0).toFixed(1)) + '</div>';
+        html += '</div>';
+      });
+      html += '</div></div>';
+    }
+  }
+
+  // --- REVIEWS ---
+  html += '<div style="background: #fff; padding: 16px; margin-top: 8px;">';
+  html += '<h3 style="font-size: 16px; font-weight: 700; margin-bottom: 12px;">Reviews (' + (p.review_count || 0) + ')</h3>';
+  if (p.review_count > 0) {
+    html += '<div style="font-size: 14px; color: #666;">Customer reviews are available. Tap to read more.</div>';
+    html += '<button onclick="navigate(\'product-\' + ' + p.id + ' + \'-reviews\')" style="margin-top: 12px; padding: 10px 20px; background: #f5f5f5; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">Read Reviews</button>';
+  } else {
+    html += '<div style="font-size: 14px; color: #888;">No reviews yet. Be the first to review this product.</div>';
+  }
+  html += '</div>';
+
+  el.innerHTML = html;
+
+  // Update sticky bar
+  var stickyPrice = document.getElementById("sticky-price");
+  var stickySummary = document.getElementById("sticky-attr-summary");
+  if (stickyPrice) stickyPrice.textContent = (p.prices && p.prices.price) ? "$" + (parseInt(p.prices.price) / 100).toFixed(2) : "$0.00";
+  if (stickySummary) stickySummary.textContent = Object.values(_selectedAttributes).join(", ");
+  stickyBar.style.display = "block";
+}
+
+function selectProductAttribute(attrName, termName) {
+  _selectedAttributes[attrName] = termName;
+  // Update UI
+  if (!_currentProduct || !_currentProduct.attributes) return;
+  _currentProduct.attributes.forEach(function(attr) {
+    if (!attr.terms) return;
+    var attrKey = attr.name.replace(/\s/g, '');
+    attr.terms.forEach(function(term) {
+      var termKey = term.name.replace(/\s/g, '');
+      var pill = document.getElementById("prod-attr-" + attrKey + "-" + termKey);
+      if (!pill) return;
+      var isSelected = _selectedAttributes[attr.name] === term.name;
+      pill.style.border = "1px solid " + (isSelected ? "#111" : "#ddd");
+      pill.style.background = isSelected ? "#111" : "#fff";
+      pill.style.color = isSelected ? "#fff" : "#333";
+    });
+  });
+  // Update sticky summary
+  var summary = document.getElementById("sticky-attr-summary");
+  if (summary) summary.textContent = Object.values(_selectedAttributes).join(", ");
+}
+
+function handleStickyAddToCart() {
+  if (!_currentProduct) return;
+  var p = _currentProduct;
+
+  // If product has attributes
+  if (p.attributes && p.attributes.length > 0) {
+    // Check if all attributes are selected
+    var missing = null;
+    for (var i = 0; i < p.attributes.length; i++) {
+      var attr = p.attributes[i];
+      if (!attr.terms || attr.terms.length === 0) continue;
+      if (!_selectedAttributes[attr.name]) { missing = attr.name; break; }
+    }
+    if (missing) {
+      showToast("Please select " + missing);
+      return;
+    }
+    // All selected — add to cart directly
+    doAddToCart();
+  } else {
+    // No attributes — show smart popup
+    openSmartPopup();
+  }
+}
+
+function openSmartPopup() {
+  var popup = document.getElementById("smart-popup");
+  if (popup) popup.style.display = "flex";
+}
+function closeSmartPopup() {
+  var popup = document.getElementById("smart-popup");
+  if (popup) popup.style.display = "none";
+  _pendingSmartAdd = null;
+}
+function confirmSmartAdd() {
+  closeSmartPopup();
+  doAddToCart();
+}
+
+function doAddToCart() {
+  var p = _currentProduct;
+  if (!p) return;
+  var attrString = Object.values(_selectedAttributes).join(", ");
+  var cartName = p.name;
+  if (attrString) cartName += " (" + attrString + ")";
+  addToCart(p.id, cartName, (p.prices ? p.prices.price : 0), ((p.images && p.images[0]) ? p.images[0].thumbnail : ""), _productQty);
+  var btn = document.getElementById("sticky-add-btn");
+  if (btn) {
+    var originalText = btn.textContent;
+    btn.textContent = "✓ Added";
+    btn.style.background = "#008C4A";
+    setTimeout(function() { btn.textContent = originalText; btn.style.background = "#111"; }, 1500);
+  }
+}
+
+function shareProduct(name, url) {
+  if (navigator.share) {
+    navigator.share({ title: name, url: url });
+  } else {
+    showToast("Share link copied");
+    if (navigator.clipboard) navigator.clipboard.writeText(url);
+  }
+}
+
+// --- FULLSCREEN IMAGE VIEWER ---
+function openImageViewer(index) {
+  _viewerIndex = index;
+  var viewer = document.getElementById("image-viewer");
+  var largeImg = document.getElementById("viewer-large-img");
+  var thumbs = document.getElementById("image-viewer-thumbs");
+  if (!viewer || !largeImg || !thumbs) return;
+  viewer.style.display = "flex";
+  largeImg.src = _productImages[_viewerIndex];
+  thumbs.innerHTML = "";
+  _productImages.forEach(function(img, i) {
+    var t = document.createElement("img");
+    t.src = img;
+    t.style.cssText = "width:60px;height:60px;border-radius:6px;object-fit:cover;cursor:pointer;border:2px solid " + (i === _viewerIndex ? "#fff" : "transparent");
+    t.onclick = function() { _viewerIndex = i; largeImg.src = img; updateViewerThumbs(); };
+    thumbs.appendChild(t);
+  });
+}
+function updateViewerThumbs() {
+  var thumbs = document.getElementById("image-viewer-thumbs");
+  var largeImg = document.getElementById("viewer-large-img");
+  if (!thumbs || !largeImg) return;
+  largeImg.src = _productImages[_viewerIndex];
+  Array.from(thumbs.children).forEach(function(t, i) {
+    t.style.border = "2px solid " + (i === _viewerIndex ? "#fff" : "transparent");
+  });
+}
+function viewerPrev() {
+  _viewerIndex = (_viewerIndex - 1 + _productImages.length) % _productImages.length;
+  updateViewerThumbs();
+}
+function viewerNext() {
+  _viewerIndex = (_viewerIndex + 1) % _productImages.length;
+  updateViewerThumbs();
+}
+function closeImageViewer() {
+  var viewer = document.getElementById("image-viewer");
+  if (viewer) viewer.style.display = "none";
+}
