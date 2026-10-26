@@ -11,8 +11,8 @@ const APP_CONFIG = {
     account: "/my-account"
   },
   tabs: [
-    { id: "home", label: "Home", icon: "🏠", page: "home" },
-    { id: "shop", label: "Shop", icon: "🛍️", page: "shop" },
-    { id: "cart", label: "Cart", icon: "🛒", page: "cart" }
+    { id: "home", label: "Home", icon: '<i class="fa-solid fa-house"></i>', page: "home" },
+    { id: "shop", label: "Shop", icon: '<i class="fa-solid fa-bag-shopping"></i>', page: "shop" },
+    { id: "cart", label: "Cart", icon: '<i class="fa-solid fa-cart-shopping"></i>', page: "cart" }
   ]
 };

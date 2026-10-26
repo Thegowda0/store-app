@@ -1,5 +1,56 @@
-<div class="hero">
-  <h1>Welcome 👋</h1>
-  <p>Shop our best sellers</p>
+<!-- HERO SECTION -->
+<div class="hero-carousel">
+  <div class="hero-slide active" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);">
+    <div class="hero-content">
+      <span class="badge">New Arrivals</span>
+      <h1>Discover Your Style</h1>
+      <p>Premium quality clothing and accessories.</p>
+      <button class="btn-primary" onclick="navigate('shop')">Shop Now <i class="fa-solid fa-arrow-right"></i></button>
+    </div>
+  </div>
 </div>
-<div class="grid" id="home-featured"></div>
+
+<!-- CATEGORIES SECTION -->
+<div class="section">
+  <div class="section-header">
+    <h2>Shop by Category</h2>
+    <a href="#" onclick="navigate('shop')">See All <i class="fa-solid fa-chevron-right"></i></a>
+  </div>
+  <div class="category-scroll">
+    <div class="category-item" onclick="navigate('shop')">
+      <div class="cat-icon"><i class="fa-solid fa-shirt"></i></div>
+      <span>Clothing</span>
+    </div>
+    <div class="category-item" onclick="navigate('shop')">
+      <div class="cat-icon"><i class="fa-solid fa-headphones"></i></div>
+      <span>Music</span>
+    </div>
+    <div class="category-item" onclick="navigate('shop')">
+      <div class="cat-icon"><i class="fa-solid fa-couch"></i></div>
+      <span>Decor</span>
+    </div>
+    <div class="category-item" onclick="navigate('shop')">
+      <div class="cat-icon"><i class="fa-solid fa-glasses"></i></div>
+      <span>Accessories</span>
+    </div>
+  </div>
+</div>
+
+<!-- PROMO BANNER -->
+<div class="promo-banner">
+  <div class="promo-content">
+    <h3>Get 20% Off</h3>
+    <p>Use code <strong>WELCOME20</strong> at checkout.</p>
+  </div>
+  <i class="fa-solid fa-tags promo-icon"></i>
+</div>
+
+<!-- TRENDING NOW (Loads via JS) -->
+<div class="section">
+  <div class="section-header">
+    <h2>Trending Now</h2>
+  </div>
+  <div class="grid" id="home-featured">
+    <!-- Products injected here -->
+  </div>
+</div>

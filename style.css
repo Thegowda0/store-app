@@ -56,3 +56,45 @@ body { font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-s
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+/* --- PREMIUM HOMEPAGE UI --- */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+body { font-family: 'Inter', sans-serif; }
+
+/* Hero */
+.hero-carousel { position: relative; width: 100%; height: 280px; border-radius: 0 0 24px 24px; overflow: hidden; margin-bottom: 24px; }
+.hero-slide { width: 100%; height: 100%; display: flex; align-items: center; padding: 24px; }
+.hero-content { color: #fff; max-width: 80%; }
+.badge { background: rgba(255,255,255,0.2); padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; backdrop-filter: blur(4px); margin-bottom: 12px; display: inline-block; }
+.hero-content h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; line-height: 1.2; }
+.hero-content p { font-size: 14px; color: rgba(255,255,255,0.8); margin-bottom: 20px; }
+.btn-primary { background: #fff; color: #111; border: none; padding: 12px 24px; border-radius: 12px; font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; cursor: pointer; transition: transform 0.2s; }
+.btn-primary:active { transform: scale(0.95); }
+
+/* Sections */
+.section { padding: 0 16px; margin-bottom: 24px; }
+.section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.section-header h2 { font-size: 18px; font-weight: 700; color: #111; }
+.section-header a { font-size: 13px; color: #666; text-decoration: none; display: flex; align-items: center; gap: 4px; }
+
+/* Categories (Horizontal Scroll) */
+.category-scroll { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: none; }
+.category-scroll::-webkit-scrollbar { display: none; }
+.category-item { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 72px; cursor: pointer; }
+.cat-icon { width: 64px; height: 64px; background: #fff; border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #111; box-shadow: 0 4px 12px rgba(0,0,0,0.04); transition: transform 0.2s; }
+.category-item:active .cat-icon { transform: scale(0.9); }
+.category-item span { font-size: 12px; font-weight: 500; color: #333; }
+
+/* Promo Banner */
+.promo-banner { margin: 0 16px 24px; background: linear-gradient(135deg, #FF416C 0%, #FF4B2B 100%); border-radius: 16px; padding: 20px; display: flex; justify-content: space-between; align-items: center; color: #fff; box-shadow: 0 8px 20px rgba(255, 75, 43, 0.3); }
+.promo-content h3 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+.promo-content p { font-size: 13px; color: rgba(255,255,255,0.9); }
+.promo-icon { font-size: 40px; opacity: 0.8; }
+
+/* Product Cards (Refined) */
+.card { background: #fff; border-radius: 16px; overflow: hidden; padding-bottom: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.04); transition: transform 0.1s; cursor: pointer; position: relative; }
+.card:active { transform: scale(0.96); }
+.card img { width: 100%; aspect-ratio: 1/1; object-fit: cover; background: #f0f0f0; }
+.card h3 { font-size: 14px; padding: 10px 12px 4px; font-weight: 600; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card .price { font-size: 14px; padding: 0 12px; color: #111; font-weight: 700; }
