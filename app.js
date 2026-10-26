@@ -2,8 +2,8 @@ const container = document.getElementById("page-container");
 const tabbar = document.getElementById("tabbar");
 
 let globalProducts = [];
-let activeCategory = "all";
 let currentSearchQuery = "";
+let currentFilteredProducts = []; // Holds results for sorting
 
 // --- TOAST ---
 function showToast(message) {
@@ -47,15 +47,19 @@ async function navigate(pageId, param = null, pushHistory = true) {
   }
 
   if (APP_CONFIG.nativePages[pageId]) {
-    const res = await fetch(APP_CONFIG.nativePages[pageId]);
-    container.innerHTML = await res.text();
-    
-    if (pageId === "home") loadProducts("home-featured");
-    if (pageId === "shop") loadProducts("product-list");
-    if (pageId === "search") initSearchPage();
-    if (pageId === "search-results") initSearchResultsPage();
-    if (pageId === "product" && param) loadSingleProduct(param);
-    if (pageId === "cart") renderCart();
+    try {
+      const res = await fetch(APP_CONFIG.nativePages[pageId]);
+      container.innerHTML = await res.text();
+      
+      if (pageId === "home") loadProducts("home-featured");
+      if (pageId === "shop") loadProducts("product-list");
+      if (pageId === "search") initSearchPage();
+      if (pageId === "search-results") initSearchResultsPage();
+      if (pageId === "product" && param) loadSingleProduct(param);
+      if (pageId === "cart") renderCart();
+    } catch (e) {
+      container.innerHTML = `<p style="padding:20px;">Error loading page: ${pageId}</p>`;
+    }
     
   } else {
     const path = APP_CONFIG.webviewRoutes[pageId] || "/" + pageId;
@@ -110,7 +114,6 @@ function clickRecent(term) {
   goToSearchResults();
 }
 
-// NEW: Only saves to history when called (on Enter or tapping recent)
 function saveSearchHistory(term) {
   term = term.trim().toLowerCase();
   if (term.length < 2) return;
@@ -118,7 +121,7 @@ function saveSearchHistory(term) {
   let recents = JSON.parse(localStorage.getItem("recent_searches") || "[]");
   if (!recents.includes(term)) {
     recents.unshift(term);
-    if (recents.length > 6) recents.pop(); // Keep max 6
+    if (recents.length > 6) recents.pop();
     localStorage.setItem("recent_searches", JSON.stringify(recents));
     renderRecentSearches();
   }
@@ -144,7 +147,6 @@ function executeSearch() {
     activeState.style.display = "block";
   }
 
-  // Show Autocomplete List (Text only)
   const filtered = globalProducts.filter(p => p.name.toLowerCase().includes(query));
   const listEl = document.getElementById("autocomplete-list");
   
@@ -171,23 +173,36 @@ function initSearchResultsPage() {
   const query = currentSearchQuery || "All Products";
   document.getElementById("results-search-label").textContent = query;
 
-  const filtered = globalProducts.filter(p => {
+  currentFilteredProducts = globalProducts.filter(p => {
     if (currentSearchQuery === "") return true;
     return p.name.toLowerCase().includes(currentSearchQuery) || (p.description || "").toLowerCase().includes(currentSearchQuery);
   });
 
+  renderSearchResultsGrid();
+}
+
+function sortProducts(type) {
+  if (type === 'price-low') {
+    currentFilteredProducts.sort((a, b) => parseInt(a.prices.price) - parseInt(b.prices.price));
+    showToast("Sorted by: Price Low to High");
+  } else if (type === 'price-high') {
+    currentFilteredProducts.sort((a, b) => parseInt(b.prices.price) - parseInt(a.prices.price));
+    showToast("Sorted by: Price High to Low");
+  }
+  renderSearchResultsGrid();
+}
+
+function renderSearchResultsGrid() {
   const grid = document.getElementById("final-results-grid");
   
-  if (filtered.length === 0) {
+  if (currentFilteredProducts.length === 0) {
     grid.innerHTML = `<div style="grid-column: span 2; text-align: center; padding: 40px;"><h3>No results found</h3></div>`;
     return;
   }
 
-  // Build BigBasket style cards
-  grid.innerHTML = filtered.map(p => {
-    // Calculate fake discount if on sale (for UI purposes)
+  grid.innerHTML = currentFilteredProducts.map(p => {
     let discountTag = "";
-    if (p.on_sale && p.prices.regular_price > p.prices.price) {
+    if (p.on_sale && parseInt(p.prices.regular_price) > parseInt(p.prices.price)) {
       const reg = parseInt(p.prices.regular_price);
       const sale = parseInt(p.prices.price);
       const percent = Math.round(((reg - sale) / reg) * 100);
@@ -197,7 +212,6 @@ function initSearchResultsPage() {
     return `
     <div style="background: #fff; border-radius: 12px; padding: 12px; position: relative; box-shadow: 0 2px 8px rgba(0,0,0,0.04); cursor: pointer;" onclick="navigate('product', ${p.id})">
       
-      <!-- Wishlist Heart -->
       <button onclick="event.stopPropagation(); showToast('Added to Wishlist ❤️')" style="position: absolute; top: 12px; right: 12px; background: none; border: none; z-index: 2;">
         <i class="fa-regular fa-heart" style="font-size: 18px; color: #aaa;"></i>
       </button>
@@ -206,13 +220,10 @@ function initSearchResultsPage() {
       
       ${discountTag}
       
-      <!-- Price -->
       <div style="font-size: 15px; font-weight: 700; color: #111; margin-bottom: 4px;">${p.price_html}</div>
       
-      <!-- Product Name -->
       <h3 style="font-size: 13px; color: #555; line-height: 1.3; margin-bottom: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${p.name}</h3>
       
-      <!-- Add Button -->
       <div style="display: flex; justify-content: space-between; align-items: center;">
         <span style="font-size: 11px; color: #888;">1 unit</span>
         <button onclick="event.stopPropagation(); addToCart(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.prices.price}, '${p.images[0]?.thumbnail || ''}')" 
