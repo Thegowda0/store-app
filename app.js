@@ -366,23 +366,17 @@ function renderProductPage(p) {
     }
   }
 
-  // Reviews — clickable card + carousel below
-  if (p.review_count > 0) {
-    html += '<div style="background: #fff; padding: 16px; margin-top: 8px;">';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">';
-    html += '<h3 style="font-size: 16px; font-weight: 700;">What Customers Say (' + (p.review_count || 0) + ')</h3>';
-    html += '<div onclick="navigate(\'reviews\', ' + p.id + ', true)" style="font-size:13px;color:#FF4B2B;font-weight:600;cursor:pointer;">See All →</div>';
-    html += '</div>';
-    html += '<div id="reviews-carousel" style="position:relative;overflow:hidden;height:150px;">';
-    html += '<p style="color:#888;padding:20px 0;">Loading reviews...</p>';
-    html += '</div>';
-    html += '<div id="carousel-dots" style="display:flex;justify-content:center;gap:6px;margin-top:10px;"></div>';
-    html += '</div>';
-  } else {
-    html += '<div onclick="navigate(\'reviews\', ' + p.id + ', true)" style="background: #fff; padding: 16px; margin-top: 8px; cursor: pointer; display: flex; align-items: center; justify-content: space-between;">';
-    html += '<div><h3 style="font-size: 16px; font-weight: 700; margin-bottom: 4px;">Reviews (0)</h3><div style="font-size: 13px; color: #888;">No reviews yet — be the first</div></div>';
-    html += '<i class="fa-solid fa-chevron-right" style="color: #888;"></i></div>';
-  }
+  // Reviews - always show section, carousel handles empty state
+  html += '<div id="reviews-section-card" style="background: #fff; padding: 16px; margin-top: 8px;">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">';
+  html += '<h3 style="font-size: 16px; font-weight: 700;">What Customers Say <span id="reviews-heading-count"></span></h3>';
+  html += '<div onclick="navigate(\'reviews\', ' + p.id + ', true)" style="font-size:13px;color:#FF4B2B;font-weight:600;cursor:pointer;">See All</div>';
+  html += '</div>';
+  html += '<div id="reviews-carousel" style="position:relative;overflow:hidden;min-height:130px;">';
+  html += '<p style="color:#888;padding:20px 0;">Loading reviews...</p>';
+  html += '</div>';
+  html += '<div id="carousel-dots" style="display:flex;justify-content:center;gap:6px;margin-top:10px;"></div>';
+  html += '</div>';
 
   el.innerHTML = html;
 
@@ -392,7 +386,7 @@ function renderProductPage(p) {
   if (stickySummary) stickySummary.textContent = Object.values(_selectedAttributes).join(", ");
   stickyBar.style.display = "block";
   updateProductAddButton();
-  if (p.review_count > 0) loadReviewsCarousel(p.id);
+  loadReviewsCarousel(p.id);
 }
 
 // ==================== REVIEWS CAROUSEL ====================
@@ -403,33 +397,66 @@ var _carouselTimer = null;
 async function loadReviewsCarousel(productId) {
   var el = document.getElementById("reviews-carousel");
   var dots = document.getElementById("carousel-dots");
+  var headingCount = document.getElementById("reviews-heading-count");
   if (!el) return;
-  try {
-    var res = await fetch(APP_CONFIG.siteUrl + "/wp-json/wp/v2/comments?post=" + productId + "&per_page=10&order=desc&orderby=date");
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    var comments = await res.json();
-    if (!comments || comments.length === 0) { el.innerHTML = "<p style='color:#888;padding:20px 0;'>No reviews yet.</p>"; return; }
 
-    _carouselData = comments.map(function(c) {
-      return {
-        name: c.author_name || "Anonymous",
-        text: (c.content && c.content.rendered) ? c.content.rendered.replace(/<[^>]*>/g, "").trim() : "",
-        rating: c.meta && c.meta.rating ? parseInt(c.meta.rating) : 5,
-        avatar: c.author_avatar_urls ? c.author_avatar_urls["48"] : ""
-      };
-    });
-    _carouselIndex = 0;
-    renderCarouselSlide();
-    if (_carouselTimer) clearInterval(_carouselTimer);
-    _carouselTimer = setInterval(function() {
-      if (_carouselData.length < 2) return;
-      _carouselIndex = (_carouselIndex + 1) % _carouselData.length;
-      renderCarouselSlide();
-    }, 10000);
-  } catch(e) {
-    console.log("Carousel load error:", e);
-    el.innerHTML = "<p style='color:#888;padding:20px 0;'>Reviews unavailable.</p>";
+  var reviews = [];
+
+  // Primary: WooCommerce Store API reviews
+  try {
+    var wcRes = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/reviews?product_id=" + productId + "&per_page=10");
+    if (wcRes.ok) {
+      var wcData = await wcRes.json();
+      if (Array.isArray(wcData) && wcData.length > 0) {
+        reviews = wcData.map(function(r) {
+          return {
+            name: r.reviewer || "Anonymous",
+            text: (r.review || "").replace(/<[^>]*>/g, "").trim(),
+            rating: r.rating || 5,
+            avatar: r.reviewer_avatar_urls ? (r.reviewer_avatar_urls["48"] || "") : ""
+          };
+        });
+      }
+    }
+  } catch(e) { console.log("WC carousel reviews failed:", e); }
+
+  // Fallback: WP comments
+  if (reviews.length === 0) {
+    try {
+      var res = await fetch(APP_CONFIG.siteUrl + "/wp-json/wp/v2/comments?post=" + productId + "&per_page=10");
+      if (res.ok) {
+        var comments = await res.json();
+        if (Array.isArray(comments) && comments.length > 0) {
+          reviews = comments.map(function(c) {
+            return {
+              name: c.author_name || "Anonymous",
+              text: (c.content && c.content.rendered) ? c.content.rendered.replace(/<[^>]*>/g, "").trim() : "",
+              rating: c.meta && c.meta.rating ? parseInt(c.meta.rating) : 5,
+              avatar: c.author_avatar_urls ? (c.author_avatar_urls["48"] || "") : ""
+            };
+          });
+        }
+      }
+    } catch(e) { console.log("WP comments carousel fallback failed:", e); }
   }
+
+  if (reviews.length === 0) {
+    if (headingCount) headingCount.textContent = "(0)";
+    el.innerHTML = '<p style="color:#888;padding:20px 0;">No reviews yet - be the first to review this product.</p>';
+    if (dots) dots.innerHTML = "";
+    return;
+  }
+
+  if (headingCount) headingCount.textContent = "(" + reviews.length + ")";
+  _carouselData = reviews;
+  _carouselIndex = 0;
+  renderCarouselSlide();
+  if (_carouselTimer) clearInterval(_carouselTimer);
+  _carouselTimer = setInterval(function() {
+    if (_carouselData.length < 2) return;
+    _carouselIndex = (_carouselIndex + 1) % _carouselData.length;
+    renderCarouselSlide();
+  }, 10000);
 }
 
 function renderCarouselSlide() {
@@ -1202,19 +1229,40 @@ handleRoute();
 
 // ==================== REVIEWS PAGE ====================
 async function loadReviewsPage(productId) {
-  var body = document.getElementById("reviews-page-body");
-  if (!body) return;
-  body.innerHTML = "<p style='padding:16px;'>Loading reviews...</p>";
-  try {
-    var p = globalProducts.find(function(x) { return x.id == productId; });
-    if (!p) {
-      var pres = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/" + productId);
-      p = await pres.json();
-    }
-    var reviews = [];
-    // Use WP comments endpoint (product reviews are comments) — filters by post
+  var p = globalProducts.find(function(item) { return item.id == productId; });
+  if (!p) {
     try {
-      var commentsRes = await fetch(APP_CONFIG.siteUrl + "/wp-json/wp/v2/comments?post=" + productId + "&per_page=50&order=desc&orderby=date");
+      var pres = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/" + productId);
+      if (pres.ok) p = await pres.json();
+    } catch(e) {}
+  }
+
+  var productName = p ? p.name : "Product";
+  var productImg = (p && p.images && p.images[0]) ? p.images[0].thumbnail : "";
+
+  var reviews = [];
+  try {
+    var wcRevRes = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/reviews?product_id=" + productId + "&per_page=50");
+    if (wcRevRes.ok) {
+      var wcRevs = await wcRevRes.json();
+      if (Array.isArray(wcRevs)) {
+        reviews = wcRevs.map(function(r) {
+          return {
+            reviewer: r.reviewer || "Anonymous",
+            review: (r.review || "").replace(/<[^>]*>/g, "").trim(),
+            rating: r.rating || 5,
+            date_created: r.date_created || "",
+            verified: r.verified || false,
+            avatar: r.reviewer_avatar_urls ? (r.reviewer_avatar_urls["48"] || "") : ""
+          };
+        });
+      }
+    }
+  } catch(e) { console.log("WC reviews page fetch failed:", e); }
+
+  if (reviews.length === 0) {
+    try {
+      var commentsRes = await fetch(APP_CONFIG.siteUrl + "/wp-json/wp/v2/comments?post=" + productId + "&per_page=50");
       if (commentsRes.ok) {
         var comments = await commentsRes.json();
         reviews = comments.map(function(c) {
@@ -1222,64 +1270,88 @@ async function loadReviewsPage(productId) {
             reviewer: c.author_name || "Anonymous",
             review: (c.content && c.content.rendered) ? c.content.rendered.replace(/<[^>]*>/g, "").trim() : "",
             rating: c.meta && c.meta.rating ? parseInt(c.meta.rating) : 5,
-            date_created: c.date,
-            verified: false
+            date_created: c.date || "",
+            verified: false,
+            avatar: c.author_avatar_urls ? (c.author_avatar_urls["48"] || "") : ""
           };
         });
       }
-    } catch(e) { console.log("Comments fetch error:", e); }
-
-    // Fallback to product endpoint reviews if still empty
-    if (reviews.length === 0 && p.reviews && p.reviews.length > 0) {
-      reviews = p.reviews;
-    }
-
-    var totalReviews = reviews.length;
-    var avgRating = parseFloat(p.average_rating || 0);
-    var counts = [0,0,0,0,0]; // 1★ to 5★
-    reviews.forEach(function(r) { var s = parseInt(r.rating || 0); if (s >= 1 && s <= 5) counts[s-1] += 1; });
-
-    var html = "";
-
-    // Summary card
-    html += '<div style="background:#fff;padding:16px;border-radius:12px;margin-bottom:12px;">';
-    html += '<div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">';
-    html += '<div style="text-align:center;"><div style="font-size:36px;font-weight:800;color:#111;">' + (avgRating ? avgRating.toFixed(1) : "0.0") + '</div><div style="color:#FFD700;font-size:14px;">★★★★★</div><div style="font-size:12px;color:#888;margin-top:2px;">' + totalReviews + ' reviews</div></div>';
-    html += '<div style="flex:1;">';
-    for (var star = 5; star >= 1; star--) {
-      var c = counts[star-1];
-      var pct = totalReviews > 0 ? (c / totalReviews * 100) : 0;
-      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><span style="font-size:12px;width:20px;">' + star + '★</span><div style="flex:1;height:8px;background:#eee;border-radius:4px;overflow:hidden;"><div style="width:' + pct + '%;height:100%;background:#FFD700;"></div></div><span style="font-size:11px;color:#888;width:24px;text-align:right;">' + c + '</span></div>';
-    }
-    html += '</div></div>';
-    var reviewPermalink = (p && p.permalink) ? p.permalink + "#reviews" : (APP_CONFIG.siteUrl + "/?p=" + productId + "#reviews");
-    html += '<button onclick="openReviewInWebView(\'' + reviewPermalink + '\')" style="width:100%;padding:12px;background:#111;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">Write a Review</button>';
-    html += '</div>';
-
-    // Review list
-    if (reviews.length === 0) {
-      html += '<div style="background:#fff;padding:40px 16px;border-radius:12px;text-align:center;"><i class="fa-regular fa-comment-dots" style="font-size:48px;color:#ccc;margin-bottom:12px;"></i><p style="color:#666;">No reviews yet. Be the first to review this product.</p></div>';
-    } else {
-      reviews.forEach(function(r) {
-        var stars = "";
-        for (var s = 0; s < 5; s++) stars += (s < r.rating ? "★" : "☆");
-        var date = r.date_created ? new Date(r.date_created).toLocaleDateString() : "";
-        var verified = r.verified ? '<span style="font-size:10px;color:#008C4A;background:#e6f7ee;padding:2px 6px;border-radius:4px;margin-left:6px;">Verified</span>' : "";
-        html += '<div style="background:#fff;padding:16px;border-radius:12px;margin-bottom:10px;">';
-        html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">';
-        html += '<div><div style="font-size:14px;font-weight:700;color:#111;">' + (r.reviewer || "Anonymous") + verified + '</div><div style="color:#FFD700;font-size:13px;">' + stars + '</div></div>';
-        html += '<div style="font-size:11px;color:#888;">' + date + '</div>';
-        html += '</div>';
-        html += '<div style="font-size:14px;color:#333;line-height:1.6;">' + (r.review || "") + '</div>';
-        html += '</div>';
-      });
-    }
-
-    body.innerHTML = html;
-  } catch(e) {
-    console.log("Reviews load error:", e);
-    body.innerHTML = '<p style="color:#d33;padding:16px;">Failed to load reviews: ' + e.message + '</p>';
+    } catch(e) { console.log("Comments fallback failed:", e); }
   }
+
+  // Compute star distribution
+  var total = reviews.length;
+  var counts = {1:0,2:0,3:0,4:0,5:0};
+  var sum = 0;
+  reviews.forEach(function(r) { var st = Math.max(1, Math.min(5, parseInt(r.rating) || 5)); counts[st]++; sum += st; });
+  var avg = total > 0 ? (sum / total).toFixed(1) : "0.0";
+
+  var html = '';
+  html += '<div style="background:#fff;min-height:100vh;padding-bottom:90px;">';
+
+  // Header
+  html += '<div style="padding:16px;background:#fff;border-bottom:1px solid #eee;display:flex;align-items:center;gap:12px;">';
+  html += '<i class="fa-solid fa-arrow-left" onclick="history.back()" style="font-size:20px;cursor:pointer;"></i>';
+  html += '<h1 style="font-size:18px;font-weight:700;">Reviews</h1>';
+  html += '</div>';
+
+  // Summary
+  html += '<div style="padding:20px;background:#fff;display:flex;gap:20px;border-bottom:8px solid #f5f5f5;">';
+  html += '<div style="text-align:center;">';
+  html += '<div style="font-size:42px;font-weight:800;color:#111;line-height:1;">' + avg + '</div>';
+  html += '<div style="color:#FFD700;font-size:16px;margin-top:4px;">';
+  for (var s=1;s<=5;s++) html += (s <= Math.round(parseFloat(avg)) ? "★" : "☆");
+  html += '</div>';
+  html += '<div style="font-size:12px;color:#888;margin-top:4px;">' + total + ' reviews</div>';
+  html += '</div>';
+  html += '<div style="flex:1;">';
+  for (var star=5;star>=1;star--) {
+    var pct = total > 0 ? (counts[star] / total * 100) : 0;
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:12px;">';
+    html += '<span style="width:20px;color:#888;">' + star + '★</span>';
+    html += '<div style="flex:1;height:6px;background:#eee;border-radius:3px;overflow:hidden;"><div style="width:' + pct + '%;height:100%;background:#FFD700;"></div></div>';
+    html += '<span style="width:24px;text-align:right;color:#888;">' + counts[star] + '</span>';
+    html += '</div>';
+  }
+  html += '</div></div>';
+
+  // Review list
+  if (reviews.length === 0) {
+    html += '<div style="padding:60px 20px;text-align:center;">';
+    html += '<i class="fa-regular fa-star" style="font-size:48px;color:#ddd;margin-bottom:16px;"></i>';
+    html += '<h3 style="font-size:16px;font-weight:700;">No reviews yet</h3>';
+    html += '<p style="color:#888;font-size:14px;margin-top:8px;">Be the first to review this product.</p>';
+    html += '</div>';
+  } else {
+    html += '<div style="padding:8px 16px;">';
+    reviews.forEach(function(r) {
+      var stars = "";
+      for (var i=0;i<5;i++) stars += (i < r.rating ? "★" : "☆");
+      var dateStr = r.date_created ? new Date(r.date_created).toLocaleDateString() : "";
+      var initial = (r.reviewer || "A").substring(0,1).toUpperCase();
+      html += '<div style="padding:16px 0;border-bottom:1px solid #f0f0f0;">';
+      html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">';
+      if (r.avatar) html += '<img src="' + r.avatar + '" style="width:40px;height:40px;border-radius:50%;">';
+      else html += '<div style="width:40px;height:40px;border-radius:50%;background:#111;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;">' + initial + '</div>';
+      html += '<div style="flex:1;">';
+      html += '<div style="font-size:14px;font-weight:700;">' + r.reviewer + (r.verified ? ' <span style="font-size:10px;color:#008C4A;background:#e6f7ee;padding:2px 6px;border-radius:4px;margin-left:6px;">Verified</span>' : '') + '</div>';
+      html += '<div style="color:#FFD700;font-size:13px;">' + stars + ' <span style="color:#aaa;margin-left:6px;">' + dateStr + '</span></div>';
+      html += '</div></div>';
+      html += '<div style="font-size:14px;color:#555;line-height:1.5;">' + r.review + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Write review button
+  var permalink = p ? (p.permalink + "#reviews") : (APP_CONFIG.siteUrl + "/?p=" + productId + "#reviews");
+  html += '<div style="padding:16px;">';
+  html += '<button onclick="openReviewInWebView(\'' + permalink + '\')" style="width:100%;padding:14px;background:#111;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">Write a Review</button>';
+  html += '</div>';
+
+  html += '</div>';
+
+  if (container) container.innerHTML = html;
 }
 
 
