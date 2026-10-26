@@ -1304,3 +1304,57 @@ function openReviewInWebView(url) {
   if (!container) return;
   container.innerHTML = '<iframe src="' + url + '" style="width:100%;height:100%;border:0;position:absolute;top:0;left:0;bottom:0;"></iframe>';
 }
+
+
+async function loadGroupedProducts(parentProduct) {
+  var el = document.getElementById("grouped-products-list");
+  if (!el) return;
+  if (!parentProduct.grouped_products || parentProduct.grouped_products.length === 0) {
+    el.innerHTML = '<p style="color:#888;">No products in this group.</p>';
+    return;
+  }
+  try {
+    var results = await Promise.all(parentProduct.grouped_products.map(function(id) {
+      return fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/" + id).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; });
+    }));
+    var valid = results.filter(function(x) { return x && x.id; });
+    if (valid.length === 0) { el.innerHTML = '<p style="color:#888;">Could not load products.</p>'; return; }
+    el.innerHTML = valid.map(function(sub) {
+      var img = (sub.images && sub.images[0]) ? sub.images[0].thumbnail : "";
+      var cart = getCart();
+      var inCart = cart.find(function(c) { return c.id === sub.id && c.name === sub.name; });
+      var qty = inCart ? inCart.qty : 0;
+      return '<div style="display:flex;gap:12px;padding:12px 0;border-bottom:1px solid #f0f0f0;align-items:center;">' +
+        '<img src="' + img + '" onclick="navigate(\'product\', ' + sub.id + ')" style="width:60px;height:60px;border-radius:8px;object-fit:cover;cursor:pointer;">' +
+        '<div style="flex:1;">' +
+          '<div onclick="navigate(\'product\', ' + sub.id + ')" style="font-size:14px;font-weight:600;cursor:pointer;">' + sub.name + '</div>' +
+          '<div style="font-size:13px;color:#666;margin-top:2px;">' + (sub.price_html || "").replace(/<[^>]*>/g, "").trim() + '</div>' +
+        '</div>' +
+        (qty > 0
+          ? '<div style="display:flex;align-items:center;gap:10px;background:#111;color:#fff;padding:6px 12px;border-radius:8px;font-weight:700;">' +
+              '<button onclick="groupedQty(' + sub.id + ', -1)" style="border:none;background:none;color:#fff;font-size:18px;cursor:pointer;padding:0 4px;">-</button>' +
+              '<span style="min-width:16px;text-align:center;">' + qty + '</span>' +
+              '<button onclick="groupedQty(' + sub.id + ', 1)" style="border:none;background:none;color:#fff;font-size:18px;cursor:pointer;padding:0 4px;">+</button>' +
+            '</div>'
+          : '<button onclick="groupedAdd(' + sub.id + ', \'' + (sub.name || "").replace(/'/g, "\\'") + '\', ' + (sub.prices ? sub.prices.price : 0) + ', \'' + img + '\')" style="padding:8px 20px;background:#111;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Add</button>') +
+      '</div>';
+    }).join("");
+  } catch(e) { console.log("Grouped load error:", e); el.innerHTML = '<p style="color:#d33;">Error loading products.</p>'; }
+}
+
+function groupedAdd(id, name, price, image) {
+  addToCart(id, name, price, image, 1);
+  if (_currentProduct) loadGroupedProducts(_currentProduct);
+}
+
+function groupedQty(id, change) {
+  var cart = getCart();
+  var idx = -1;
+  for (var i = 0; i < cart.length; i++) { if (cart[i].id === id) { idx = i; break; } }
+  if (idx > -1) {
+    cart[idx].qty += change;
+    if (cart[idx].qty <= 0) cart.splice(idx, 1);
+    saveCart(cart);
+    if (_currentProduct) loadGroupedProducts(_currentProduct);
+  }
+}
