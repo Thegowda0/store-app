@@ -1,7 +1,8 @@
 const container = document.getElementById("page-container");
 const tabbar = document.getElementById("tabbar");
 
-let globalProducts = []; // Store products for search
+let globalProducts = [];
+let activeCategory = "all";
 
 // --- TOAST ---
 function showToast(message) {
@@ -27,20 +28,14 @@ APP_CONFIG.tabs.forEach(tab => {
   tabbar.appendChild(btn);
 });
 
-// --- HISTORY ROUTER ---
+// --- ROUTER ---
 window.addEventListener('hashchange', handleRoute);
 
 function handleRoute() {
   const hash = window.location.hash.replace('#', '');
-  
-  if (!hash) {
-    navigate("home", null, false);
-  } else if (hash.startsWith('product-')) {
-    const id = hash.split('-')[1];
-    navigate("product", id, false);
-  } else {
-    navigate(hash, null, false);
-  }
+  if (!hash) navigate("home", null, false);
+  else if (hash.startsWith('product-')) navigate("product", hash.split('-')[1], false);
+  else navigate(hash, null, false);
 }
 
 async function navigate(pageId, param = null, pushHistory = true) {
@@ -56,6 +51,7 @@ async function navigate(pageId, param = null, pushHistory = true) {
     
     if (pageId === "home") loadProducts("home-featured");
     if (pageId === "shop") loadProducts("product-list");
+    if (pageId === "search") initSearchPage();
     if (pageId === "product" && param) loadSingleProduct(param);
     if (pageId === "cart") renderCart();
     
@@ -69,36 +65,93 @@ async function navigate(pageId, param = null, pushHistory = true) {
     t.classList.toggle("active", t.dataset.id === pageId));
 }
 
-// --- PRODUCTS & SEARCH ---
-async function loadProducts(containerId) {
-  const el = document.getElementById(containerId);
-  if (!el) return;
+// --- SEARCH PAGE LOGIC ---
+async function initSearchPage() {
+  // 1. Fetch products if not loaded
+  if (globalProducts.length === 0) {
+    document.getElementById("search-results").innerHTML = "<p style='padding:16px; grid-column:span 2;'>Loading products...</p>";
+    try {
+      const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products?per_page=50`);
+      globalProducts = await res.json();
+    } catch(e) { return; }
+  }
+
+  // 2. Build Category Pills
+  const categories = ["all", ...new Set(globalProducts.map(p => p.categories[0]?.name).filter(Boolean))];
+  const catContainer = document.getElementById("search-categories");
+  catContainer.innerHTML = categories.map(cat => `
+    <button onclick="setSearchCategory('${cat}')" 
+      style="white-space:nowrap; padding:8px 16px; border-radius:20px; border:1px solid ${activeCategory === cat ? '#111' : '#ddd'}; background:${activeCategory === cat ? '#111' : '#fff'}; color:${activeCategory === cat ? '#fff' : '#666'}; font-size:13px; font-weight:500; cursor:pointer; transition:all 0.2s;">
+      ${cat.charAt(0).toUpperCase() + cat.slice(1)}
+    </button>
+  `).join("");
+
+  // 3. Focus input
+  setTimeout(() => document.getElementById("search-page-input").focus(), 100);
   
-  // If we already loaded products, just render them (faster navigation)
-  if (globalProducts.length > 0) {
-    renderProductGrid(containerId, globalProducts);
+  // 4. Initial render
+  executeSearch();
+}
+
+function setSearchCategory(cat) {
+  activeCategory = cat;
+  // Update pill colors
+  const pills = document.getElementById("search-categories").children;
+  for (let pill of pills) {
+    const isActive = pill.textContent.trim().toLowerCase() === cat.toLowerCase();
+    pill.style.background = isActive ? '#111' : '#fff';
+    pill.style.color = isActive ? '#fff' : '#666';
+    pill.style.border = isActive ? '1px solid #111' : '1px solid #ddd';
+  }
+  executeSearch();
+}
+
+function executeSearch() {
+  const query = document.getElementById("search-page-input").value.toLowerCase();
+  
+  const filtered = globalProducts.filter(p => {
+    const matchesQuery = p.name.toLowerCase().includes(query) || (p.description || "").toLowerCase().includes(query);
+    const matchesCategory = activeCategory === "all" || p.categories.some(c => c.name.toLowerCase() === activeCategory.toLowerCase());
+    return matchesQuery && matchesCategory;
+  });
+
+  const resultsEl = document.getElementById("search-results");
+  if (filtered.length === 0) {
+    resultsEl.innerHTML = `
+      <div style="grid-column: span 2; text-align: center; padding: 40px 16px; color: #666;">
+        <i class="fa-solid fa-box-open" style="font-size: 48px; color: #ccc; margin-bottom: 16px;"></i>
+        <h3 style="color:#111;">No results found</h3>
+        <p style="font-size: 14px; margin-top: 8px;">We couldn't find anything for "${query}".</p>
+      </div>`;
     return;
   }
 
-  el.innerHTML = "<p style='padding:16px;'>Loading products...</p>";
+  resultsEl.innerHTML = filtered.map(p => `
+    <div class="card" onclick="navigate('product', ${p.id})">
+      <img src="${p.images[0]?.thumbnail || ''}" loading="lazy" alt="${p.name}">
+      <h3>${p.name}</h3>
+      <div class="price">${p.price_html}</div>
+    </div>`).join("");
+}
 
+// --- STANDARD PRODUCTS ---
+async function loadProducts(containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (globalProducts.length > 0) { renderProductGrid(containerId, globalProducts); return; }
+
+  el.innerHTML = "<p style='padding:16px;'>Loading products...</p>";
   try {
     const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products?per_page=50`);
-    globalProducts = await res.json(); // Save globally
+    globalProducts = await res.json();
     renderProductGrid(containerId, globalProducts);
-  } catch(e) { 
-    el.innerHTML = "<p style='padding:16px;'>Error loading products.</p>";
-  }
+  } catch(e) { el.innerHTML = "<p style='padding:16px;'>Error loading products.</p>"; }
 }
 
 function renderProductGrid(containerId, products) {
   const el = document.getElementById(containerId);
   if (!el) return;
-  
-  if (products.length === 0) {
-    el.innerHTML = "<p style='padding:32px 16px; text-align:center; color:#666; grid-column: span 2;'>No products found.</p>";
-    return;
-  }
+  if (products.length === 0) { el.innerHTML = "<p>No products found.</p>"; return; }
 
   el.innerHTML = products.map(p => `
     <div class="card" onclick="navigate('product', ${p.id})">
@@ -108,18 +161,11 @@ function renderProductGrid(containerId, products) {
     </div>`).join("");
 }
 
-function filterProducts() {
-  const query = document.getElementById("search-input").value.toLowerCase();
-  const filtered = globalProducts.filter(p => p.name.toLowerCase().includes(query));
-  renderProductGrid("product-list", filtered);
-}
-
 async function loadSingleProduct(id) {
   const el = document.getElementById("product-detail");
   el.innerHTML = "<p style='padding:16px;'>Loading product...</p>";
 
   try {
-    // Find product in global memory first to avoid API call
     let p = globalProducts.find(item => item.id == id);
     if (!p) {
       const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products/${id}`);
@@ -141,9 +187,7 @@ async function loadSingleProduct(id) {
         </button>
       </div>
     `;
-  } catch(e) {
-    el.innerHTML = "<p style='padding:16px;'>Error loading product.</p>";
-  }
+  } catch(e) { el.innerHTML = "<p style='padding:16px;'>Error loading product.</p>"; }
 }
 
 // --- CART LOGIC ---
@@ -153,9 +197,7 @@ function saveCart(cart) { localStorage.setItem("native_cart", JSON.stringify(car
 function addToCart(id, name, price, image) {
   let cart = getCart();
   let existing = cart.find(item => item.id === id);
-  
   if (existing) { existing.qty += 1; } else { cart.push({ id, name, price: parseFloat(price), image, qty: 1 }); }
-  
   saveCart(cart);
   showToast("✓ Added to Cart");
 }
@@ -194,7 +236,6 @@ function renderCart() {
     total += (item.price * item.qty);
     let displayPrice = (item.price / 100).toFixed(2);
     let totalForItem = ((item.price * item.qty) / 100).toFixed(2);
-    
     return `
     <div style="display:flex; gap:12px; padding:16px; border-bottom:1px solid #eee; align-items:center;">
       <img src="${item.image}" style="width:64px; height:64px; border-radius:8px; object-fit:cover;">
@@ -227,10 +268,7 @@ function changeQty(id, change) {
   }
 }
 
-function checkout() {
-  navigate("checkout");
-}
+function checkout() { navigate("checkout"); }
 
-// --- INITIAL LOAD ---
 updateCartBadge();
 handleRoute();

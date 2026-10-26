@@ -1,5 +1,5 @@
 <!-- HERO SECTION -->
-<div class="hero-carousel">
+<div class="hero-carousel" style="margin-bottom: 16px;">
   <div class="hero-slide active" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);">
     <div class="hero-content">
       <span class="badge">New Arrivals</span>
@@ -10,6 +10,15 @@
   </div>
 </div>
 
+<!-- CLICKABLE SEARCH BAR -->
+<div style="padding: 0 16px; margin-bottom: 24px;">
+  <div onclick="navigate('search')" style="display:flex; align-items:center; background:#fff; padding:14px 16px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.04); color:#888; cursor:pointer;">
+    <i class="fa-solid fa-magnifying-glass" style="margin-right:12px; color:#111;"></i>
+    <span style="font-size:15px;">Search products, categories...</span>
+    <i class="fa-solid fa-microphone" style="margin-left:auto; color:#ccc;"></i>
+  </div>
+</div>
+
 <!-- CATEGORIES SECTION -->
 <div class="section">
   <div class="section-header">
@@ -17,19 +26,19 @@
     <a href="#" onclick="navigate('shop')">See All <i class="fa-solid fa-chevron-right"></i></a>
   </div>
   <div class="category-scroll">
-    <div class="category-item" onclick="navigate('shop')">
+    <div class="category-item" onclick="navigate('search')">
       <div class="cat-icon"><i class="fa-solid fa-shirt"></i></div>
       <span>Clothing</span>
     </div>
-    <div class="category-item" onclick="navigate('shop')">
+    <div class="category-item" onclick="navigate('search')">
       <div class="cat-icon"><i class="fa-solid fa-headphones"></i></div>
       <span>Music</span>
     </div>
-    <div class="category-item" onclick="navigate('shop')">
+    <div class="category-item" onclick="navigate('search')">
       <div class="cat-icon"><i class="fa-solid fa-couch"></i></div>
       <span>Decor</span>
     </div>
-    <div class="category-item" onclick="navigate('shop')">
+    <div class="category-item" onclick="navigate('search')">
       <div class="cat-icon"><i class="fa-solid fa-glasses"></i></div>
       <span>Accessories</span>
     </div>
@@ -45,12 +54,10 @@
   <i class="fa-solid fa-tags promo-icon"></i>
 </div>
 
-<!-- TRENDING NOW (Loads via JS) -->
+<!-- TRENDING NOW -->
 <div class="section">
   <div class="section-header">
     <h2>Trending Now</h2>
   </div>
-  <div class="grid" id="home-featured">
-    <!-- Products injected here -->
-  </div>
+  <div class="grid" id="home-featured"></div>
 </div>
