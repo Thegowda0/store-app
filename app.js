@@ -1,7 +1,7 @@
 const container = document.getElementById("page-container");
 const tabbar = document.getElementById("tabbar");
 
-// --- TOAST NOTIFICATION ---
+// --- TOAST ---
 function showToast(message) {
   let toast = document.getElementById("toast");
   if (!toast) {
@@ -21,12 +21,49 @@ APP_CONFIG.tabs.forEach(tab => {
   btn.className = "tab";
   btn.dataset.id = tab.id;
   btn.innerHTML = `<span>${tab.icon}</span><small>${tab.label}</small>`;
-  btn.onclick = () => navigate(tab.page);
+  // Instead of navigate, we push a new history state for tabs
+  btn.onclick = () => { window.location.hash = tab.page === 'home' ? '' : tab.page; };
   tabbar.appendChild(btn);
 });
 
-// --- ROUTER ---
-async function navigate(pageId, param = null) {
+// --- HISTORY ROUTER ---
+// This handles both clicks and the phone's back button
+window.addEventListener('hashchange', handleRoute);
+
+function handleRoute() {
+  const hash = window.location.hash.replace('#', '');
+  
+  if (!hash) {
+    // Default to home if no hash
+    if (!window.location.hash) {
+      navigate("home", null, false); // false = don't push history again
+    } else {
+      navigate(hash, null, false);
+    }
+  } else if (hash.startsWith('product-')) {
+    const id = hash.split('-')[1];
+    navigate("product", id, false);
+  } else if (APP_CONFIG.webviewRoutes[hash]) {
+    navigate(hash, null, false);
+  } else {
+    navigate(hash, null, false);
+  }
+}
+
+// The actual router function
+async function navigate(pageId, param = null, pushHistory = true) {
+  // 1. Update the URL History
+  if (pushHistory) {
+    if (pageId === "home") {
+      history.pushState(null, "", window.location.pathname);
+    } else if (pageId === "product") {
+      history.pushState(null, "", `#product-${param}`);
+    } else {
+      history.pushState(null, "", `#${pageId}`);
+    }
+  }
+
+  // 2. Load the page content
   if (APP_CONFIG.nativePages[pageId]) {
     const res = await fetch(APP_CONFIG.nativePages[pageId]);
     container.innerHTML = await res.text();
@@ -42,6 +79,7 @@ async function navigate(pageId, param = null) {
       style="width:100%;height:100%;border:0;position:absolute;top:0;left:0;bottom:60px;"></iframe>`;
   }
   
+  // 3. Update tab active state
   document.querySelectorAll(".tab").forEach(t =>
     t.classList.toggle("active", t.dataset.id === pageId));
 }
@@ -95,25 +133,15 @@ async function loadSingleProduct(id) {
   }
 }
 
-// --- REAL NATIVE CART LOGIC ---
-function getCart() {
-  return JSON.parse(localStorage.getItem("native_cart") || "[]");
-}
-
-function saveCart(cart) {
-  localStorage.setItem("native_cart", JSON.stringify(cart));
-  updateCartBadge();
-}
+// --- CART LOGIC ---
+function getCart() { return JSON.parse(localStorage.getItem("native_cart") || "[]"); }
+function saveCart(cart) { localStorage.setItem("native_cart", JSON.stringify(cart)); updateCartBadge(); }
 
 function addToCart(id, name, price, image) {
   let cart = getCart();
   let existing = cart.find(item => item.id === id);
   
-  if (existing) {
-    existing.qty += 1;
-  } else {
-    cart.push({ id, name, price: parseFloat(price), image, qty: 1 });
-  }
+  if (existing) { existing.qty += 1; } else { cart.push({ id, name, price: parseFloat(price), image, qty: 1 }); }
   
   saveCart(cart);
   showToast("✓ Added to Cart");
@@ -137,7 +165,6 @@ function updateCartBadge() {
   }
 }
 
-// --- RENDER CART PAGE ---
 function renderCart() {
   const cart = getCart();
   const el = document.getElementById("cart-items");
@@ -152,7 +179,6 @@ function renderCart() {
   let total = 0;
   el.innerHTML = cart.map(item => {
     total += (item.price * item.qty);
-    // WooCommerce prices come in cents (e.g. 1800 = $18.00). We divide by 100.
     let displayPrice = (item.price / 100).toFixed(2);
     let totalForItem = ((item.price * item.qty) / 100).toFixed(2);
     
@@ -188,6 +214,11 @@ function changeQty(id, change) {
   }
 }
 
-// Initialize Badge on load
+function checkout() {
+  // Send the user to the native WebView checkout page
+  navigate("checkout");
+}
+
+// --- INITIAL LOAD ---
 updateCartBadge();
-navigate("home");
+handleRoute(); // Load the correct page based on URL
