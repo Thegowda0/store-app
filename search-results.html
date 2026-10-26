@@ -14,32 +14,25 @@
   <button onclick="openFilterSheet()" style="display:flex; align-items:center; gap:6px; padding: 8px 12px; border-radius: 8px; border: 1px solid #111; background: #111; color: #fff; font-size: 13px; font-weight: 500; white-space: nowrap;">
     <i class="fa-solid fa-sliders"></i> Filter & Sort <span id="active-filter-count" style="background:#FF4B2B; border-radius:50%; width:16px; height:16px; display:none; align-items:center; justify-content:center; font-size:10px;">0</span>
   </button>
-  <button onclick="openFilterSheet()" style="padding: 8px 12px; border-radius: 8px; border: 1px solid #ddd; background: #fff; font-size: 13px; font-weight: 500; white-space: nowrap; display:flex; align-items:center; gap:6px;">Sort <i class="fa-solid fa-caret-down"></i></button>
-  <button onclick="openFilterSheet()" style="padding: 8px 12px; border-radius: 8px; border: 1px solid #ddd; background: #fff; font-size: 13px; font-weight: 500; white-space: nowrap; display:flex; align-items:center; gap:6px;">Category <i class="fa-solid fa-caret-down"></i></button>
-  <button onclick="openFilterSheet()" style="padding: 8px 12px; border-radius: 8px; border: 1px solid #ddd; background: #fff; font-size: 13px; font-weight: 500; white-space: nowrap; display:flex; align-items:center; gap:6px;">Price <i class="fa-solid fa-caret-down"></i></button>
 </div>
 
 <!-- RESULTS GRID -->
-<div id="final-results-grid" class="grid" style="padding: 16px; padding-bottom: 80px; background: #f9f9f9;">
-  <!-- Products injected by JS -->
-</div>
+<div id="final-results-grid" class="grid" style="padding: 16px; padding-bottom: 80px; background: #f9f9f9;"></div>
 
 <!-- FILTER BOTTOM SHEET -->
 <div id="filter-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 999; display: none; opacity: 0; transition: opacity 0.3s;" onclick="closeFilterSheet()"></div>
 
-<div id="filter-sheet" style="position: fixed; bottom: -100%; left: 0; right: 0; background: #fff; border-radius: 24px 24px 0 0; z-index: 1000; padding: 24px 0; transition: bottom 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); max-height: 85vh; display: flex; flex-direction: column;">
-  <div style="padding: 0 16px;">
+<div id="filter-sheet" style="position: fixed; bottom: -100%; left: 0; right: 0; background: #fff; border-radius: 24px 24px 0 0; z-index: 1000; transition: bottom 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); max-height: 90vh; display: flex; flex-direction: column;">
+  <div style="padding: 20px 16px 12px; border-bottom: 1px solid #eee;">
     <div style="width: 40px; height: 4px; background: #ddd; border-radius: 2px; margin: 0 auto 16px;"></div>
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
       <h2 style="font-size: 18px; font-weight: 700;">Filters & Sort</h2>
-      <span onclick="resetFilters()" style="font-size: 13px; color: #FF4B2B; font-weight: 600; cursor: pointer;">Reset All</span>
+      <span onclick="resetFilters()" style="font-size: 14px; color: #FF4B2B; font-weight: 600; cursor: pointer;">Reset All</span>
     </div>
   </div>
 
-  <!-- Scrollable Filter Content (Accordions) -->
-  <div id="filter-accordion-container" style="flex: 1; overflow-y: auto; padding: 0 16px;">
-    <!-- Dynamic Accordions injected by JS -->
-  </div>
+  <!-- Scrollable Filter Content -->
+  <div id="filter-accordion-container" style="flex: 1; overflow-y: auto; padding: 0 16px;"></div>
 
   <!-- Sticky Apply Button -->
   <div style="padding: 16px; border-top: 1px solid #eee; background: #fff;">

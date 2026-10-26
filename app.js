@@ -8,11 +8,13 @@ let currentSearchQuery = "";
 let filterState = {
   sort: "relevance",
   category: null,
-  brand: null,
   minPrice: "",
   maxPrice: "",
-  attributes: {} // e.g. { "Color": "Blue", "Size": "L" }
+  attributes: {} 
 };
+
+let minProductPrice = 0;
+let maxProductPrice = 10000;
 
 // --- TOAST ---
 function showToast(message) {
@@ -129,84 +131,109 @@ function executeSearch() {
 
 function goToSearchResults() { 
   saveSearchHistory(currentSearchQuery); 
-  // RESET FILTERS ON NEW SEARCH
-  resetFilters(false); 
+  resetFilters(false); // Reset on new search
   navigate('search-results'); 
 }
 
-// --- DYNAMIC FILTER LOGIC ---
+// --- DYNAMIC FILTER UI ---
 async function initSearchResultsPage() {
   document.getElementById("results-search-label").textContent = currentSearchQuery || "All Products";
-  await buildDynamicFilterUI();
+  
+  // Calculate min and max prices for slider
+  if (globalProducts.length > 0) {
+    const prices = globalProducts.map(p => parseInt(p.prices.price) / 100); // Convert cents to dollars
+    minProductPrice = Math.floor(Math.min(...prices));
+    maxProductPrice = Math.ceil(Math.max(...prices));
+    if (!filterState.minPrice) filterState.minPrice = minProductPrice;
+    if (!filterState.maxPrice) filterState.maxPrice = maxProductPrice;
+  }
+
+  buildDynamicFilterUI();
   applyFilters();
 }
 
-async function buildDynamicFilterUI() {
+function buildDynamicFilterUI() {
   const container = document.getElementById("filter-accordion-container");
-  container.innerHTML = "<p>Loading filters...</p>";
-
-  // 1. Fetch Attributes from API
-  let attributes = [];
-  try {
-    const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products/attributes`);
-    attributes = await res.json();
-  } catch(e) { console.log("Could not load attributes"); }
-
-  // 2. Fetch Categories
-  const cats = [...new Set(globalProducts.flatMap(p => p.categories.map(c => c.name)))];
-
-  // 3. Build HTML
   let html = "";
 
-  // --- Sort Accordion ---
+  // 1. Sort UI (Beautiful Radio Buttons)
   html += createAccordion("sort", "Sort By", `
     <div style="display:flex; flex-direction:column; gap:12px;">
-      ${['relevance', 'price-low', 'price-high', 'newest', 'rating'].map(s => `
-        <label style="display:flex; align-items:center; gap:8px; font-size:14px;">
-          <input type="radio" name="sort" value="${s}" ${filterState.sort === s ? 'checked' : ''} onchange="filterState.sort='${s}'">
-          ${s === 'price-low' ? 'Price: Low to High' : s === 'price-high' ? 'Price: High to Low' : s === 'rating' ? 'Customer Rating' : s === 'newest' ? 'Newest Arrivals' : 'Relevance'}
+      ${[
+        {id: 'relevance', label: 'Relevance'},
+        {id: 'price-low', label: 'Price: Low to High'},
+        {id: 'price-high', label: 'Price: High to Low'},
+        {id: 'rating', label: 'Customer Rating'}
+      ].map(s => `
+        <label style="display:flex; align-items:center; justify-content:space-between; font-size:15px; padding:12px; background:${filterState.sort === s.id ? '#f0f0f0' : '#fff'}; border-radius:8px; cursor:pointer;">
+          <span>${s.label}</span>
+          <input type="radio" name="sort" value="${s.id}" ${filterState.sort === s.id ? 'checked' : ''} onchange="filterState.sort='${s.id}'" style="width:18px; height:18px; accent-color:#111;">
         </label>
       `).join('')}
     </div>
   `);
 
-  // --- Price Accordion ---
+  // 2. Price Range Slider
   html += createAccordion("price", "Price Range", `
-    <div style="display:flex; gap:12px; align-items:center;">
-      <input type="number" placeholder="Min" value="${filterState.minPrice}" oninput="filterState.minPrice=this.value" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:8px;">
-      <span>-</span>
-      <input type="number" placeholder="Max" value="${filterState.maxPrice}" oninput="filterState.maxPrice=this.value" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:8px;">
+    <div style="padding: 10px 0;">
+      <div style="display:flex; justify-content:space-between; margin-bottom:16px; font-weight:600; font-size:14px;">
+        <span>$${filterState.minPrice}</span>
+        <span>$${filterState.maxPrice}</span>
+      </div>
+      <div style="position:relative; height:30px;">
+        <!-- Slider track -->
+        <div style="position:absolute; top:50%; left:0; right:0; height:4px; background:#ddd; border-radius:2px; transform:translateY(-50%);"></div>
+        <!-- The actual inputs -->
+        <input type="range" min="${minProductPrice}" max="${maxProductPrice}" value="${filterState.minPrice}" oninput="filterState.minPrice=this.value; this.nextElementSibling.value=this.value; updatePriceUI()" style="position:absolute; width:100%; pointer-events:none; appearance:none; background:none; top:0;">
+        <input type="range" min="${minProductPrice}" max="${maxProductPrice}" value="${filterState.maxPrice}" oninput="filterState.maxPrice=this.value; this.previousElementSibling.value=this.value; updatePriceUI()" style="position:absolute; width:100%; pointer-events:none; appearance:none; background:none; top:0;">
+      </div>
     </div>
   `);
 
-  // --- Categories Accordion ---
+  // 3. Categories
+  const cats = [...new Set(globalProducts.flatMap(p => p.categories.map(c => c.name)))];
   html += createAccordion("category", "Categories", `
-    <div style="display:flex; flex-wrap:wrap; gap:8px;">
+    <div style="display:flex; flex-direction:column; gap:10px;">
       ${cats.map(c => `
-        <div onclick="toggleFilterPill('category', '${c}')" style="padding: 8px 16px; border-radius: 20px; border: 1px solid ${filterState.category === c ? '#111' : '#ddd'}; background: ${filterState.category === c ? '#111' : '#fff'}; color: ${filterState.category === c ? '#fff' : '#333'}; font-size: 13px; cursor: pointer;">${c}</div>
+        <label style="display:flex; align-items:center; justify-content:space-between; font-size:14px; cursor:pointer;">
+          <span>${c}</span>
+          <input type="radio" name="cat" ${filterState.category === c ? 'checked' : ''} onchange="filterState.category='${c}'" style="width:18px; height:18px; accent-color:#111;">
+        </label>
       `).join('')}
     </div>
   `);
 
-  // --- DYNAMIC Attributes Accordions (Color, Size, etc.) ---
-  for (let attr of attributes) {
-    // Only show if the current loaded products actually have this attribute
-    const hasAttribute = globalProducts.some(p => p.attributes?.some(a => a.name === attr.name));
-    if (!hasAttribute) continue;
+  // 4. Dynamic Attributes (Color, Size, etc)
+  const allAttributes = [...new Set(globalProducts.flatMap(p => p.attributes?.map(a => a.name) || []))];
+  
+  allAttributes.forEach(attrName => {
+    const terms = [...new Set(globalProducts.flatMap(p => p.attributes?.filter(a => a.name === attrName).flatMap(a => a.terms.map(t => t.name)) || []))];
+    if (terms.length === 0) return;
 
-    // Get all terms for this attribute
-    const terms = [...new Set(globalProducts.flatMap(p => p.attributes?.filter(a => a.name === attr.name).flatMap(a => a.terms.map(t => t.name)) || []))];
-    
-    html += createAccordion(`attr-${attr.id}`, attr.name, `
+    html += createAccordion(`attr-${attrName}`, attrName, `
       <div style="display:flex; flex-wrap:wrap; gap:8px;">
         ${terms.map(t => `
-          <div onclick="toggleFilterPill('${attr.name}', '${t}')" style="padding: 8px 16px; border-radius: 20px; border: 1px solid ${filterState.attributes[attr.name] === t ? '#111' : '#ddd'}; background: ${filterState.attributes[attr.name] === t ? '#111' : '#fff'}; color: ${filterState.attributes[attr.name] === t ? '#fff' : '#333'}; font-size: 13px; cursor: pointer;">${t}</div>
+          <div onclick="toggleFilterPill('${attrName}', '${t}')" style="padding: 8px 16px; border-radius: 20px; border: 1px solid ${filterState.attributes[attrName] === t ? '#111' : '#ddd'}; background: ${filterState.attributes[attrName] === t ? '#111' : '#fff'}; color: ${filterState.attributes[attrName] === t ? '#fff' : '#333'}; font-size: 13px; cursor: pointer;">${t}</div>
         `).join('')}
       </div>
     `);
-  }
+  });
 
   container.innerHTML = html;
+  
+  // Open sort by default
+  document.getElementById("accordion-sort").style.display = "block";
+  document.getElementById("icon-sort").style.transform = "rotate(180deg)";
+}
+
+// Fix for the price slider UI updating instantly
+function updatePriceUI() {
+  const sliderContainer = document.getElementById("accordion-price");
+  if(sliderContainer) {
+    const spans = sliderContainer.querySelectorAll("span");
+    spans[0].textContent = `$${filterState.minPrice}`;
+    spans[1].textContent = `$${filterState.maxPrice}`;
+  }
 }
 
 // Accordion HTML Generator
@@ -227,7 +254,7 @@ function createAccordion(id, title, content) {
 function toggleAccordion(id) {
   const el = document.getElementById(`accordion-${id}`);
   const icon = document.getElementById(`icon-${id}`);
-  if (el.style.display === "none") {
+  if (el.style.display === "none" || el.style.display === "") {
     el.style.display = "block";
     icon.style.transform = "rotate(180deg)";
   } else {
@@ -237,18 +264,13 @@ function toggleAccordion(id) {
 }
 
 function toggleFilterPill(type, value) {
-  if (type === 'category') {
-    filterState.category = filterState.category === value ? null : value;
-  } else {
-    // It's an attribute (like Color)
-    if (filterState.attributes[type] === value) delete filterState.attributes[type];
-    else filterState.attributes[type] = value;
-  }
-  buildDynamicFilterUI(); // Re-render to show active state
+  if (filterState.attributes[type] === value) delete filterState.attributes[type];
+  else filterState.attributes[type] = value;
+  buildDynamicFilterUI(); 
 }
 
 function resetFilters(rerender = true) {
-  filterState = { sort: "relevance", category: null, brand: null, minPrice: "", maxPrice: "", attributes: {} };
+  filterState = { sort: "relevance", category: null, minPrice: minProductPrice, maxPrice: maxProductPrice, attributes: {} };
   if (rerender) {
     buildDynamicFilterUI();
     applyFilters();
@@ -264,15 +286,17 @@ async function applyFilters() {
   
   if (currentSearchQuery) url += `&search=${encodeURIComponent(currentSearchQuery)}`;
   if (filterState.category) url += `&category=${encodeURIComponent(filterState.category)}`;
+  
+  // Price filter
   if (filterState.minPrice) url += `&min_price=${filterState.minPrice}`;
   if (filterState.maxPrice) url += `&max_price=${filterState.maxPrice}`;
   
+  // Sort filter
   if (filterState.sort === 'price-low') url += `&orderby=price&order=asc`;
   if (filterState.sort === 'price-high') url += `&orderby=price&order=desc`;
-  if (filterState.sort === 'newest') url += `&orderby=date&order=desc`;
   if (filterState.sort === 'rating') url += `&orderby=rating&order=desc`;
 
-  // Add Attributes to URL (WooCommerce handles this natively)
+  // Attribute filter
   let attrIndex = 0;
   for (let [key, value] of Object.entries(filterState.attributes)) {
     url += `&attributes[${attrIndex}].attribute=${encodeURIComponent(key)}&attributes[${attrIndex}].term=${encodeURIComponent(value)}`;
@@ -283,9 +307,9 @@ async function applyFilters() {
     const res = await fetch(url);
     const products = await res.json();
     
-    // Update Badge
+    // Update Badge Count
     let activeCount = (filterState.category ? 1 : 0) + (filterState.sort !== 'relevance' ? 1 : 0) + Object.keys(filterState.attributes).length;
-    if (filterState.minPrice || filterState.maxPrice) activeCount++;
+    if (filterState.minPrice > minProductPrice || filterState.maxPrice < maxProductPrice) activeCount++;
     
     const badge = document.getElementById("active-filter-count");
     badge.style.display = activeCount > 0 ? "flex" : "none";
@@ -295,23 +319,11 @@ async function applyFilters() {
     renderSearchResultsGrid(products);
 
   } catch (e) {
+    console.log(e);
     grid.innerHTML = "<p style='padding:16px; grid-column:span 2;'>Error loading filters.</p>";
   }
 }
 
-// --- FILTER BOTTOM SHEET UI ---
-function openFilterSheet() {
-  document.getElementById("filter-overlay").style.display = "block";
-  setTimeout(() => document.getElementById("filter-overlay").style.opacity = "1", 10);
-  document.getElementById("filter-sheet").style.bottom = "0";
-}
-function closeFilterSheet() {
-  document.getElementById("filter-overlay").style.opacity = "0";
-  document.getElementById("filter-sheet").style.bottom = "-100%";
-  setTimeout(() => document.getElementById("filter-overlay").style.display = "none", 300);
-}
-
-// --- PRODUCT RENDERING (Standard from before) ---
 function renderSearchResultsGrid(products) {
   const grid = document.getElementById("final-results-grid");
   const wishlist = getWishlist();
@@ -349,23 +361,16 @@ function renderSearchResultsGrid(products) {
   }).join("");
 }
 
-// --- WISHLIST ---
-function getWishlist() { return JSON.parse(localStorage.getItem("native_wishlist") || "[]"); }
-function saveWishlist(w) { localStorage.setItem("native_wishlist", JSON.stringify(w)); }
-function toggleWishlist(id, name, price, image) {
-  let w = getWishlist();
-  let exists = w.find(item => item.id === id);
-  if (exists) { w = w.filter(item => item.id !== id); showToast("Removed from Wishlist"); } 
-  else { w.push({ id, name, price: parseFloat(price), image }); showToast("✓ Added to Wishlist"); }
-  saveWishlist(w);
-  if (window.location.hash === "#search-results") applyFilters();
-  if (window.location.hash === "#wishlist") renderWishlistPage();
+// --- FILTER BOTTOM SHEET UI ---
+function openFilterSheet() {
+  document.getElementById("filter-overlay").style.display = "block";
+  setTimeout(() => document.getElementById("filter-overlay").style.opacity = "1", 10);
+  document.getElementById("filter-sheet").style.bottom = "0";
 }
-function renderWishlistPage() {
-  const w = getWishlist();
-  const grid = document.getElementById("wishlist-grid");
-  if (w.length === 0) { grid.innerHTML = "<div style='grid-column: span 2; text-align: center; padding: 40px;'><i class='fa-regular fa-heart' style='font-size:48px; color:#ccc; margin-bottom:16px;'></i><h3>Your wishlist is empty</h3></div>"; return; }
-  grid.innerHTML = w.map(p => `<div class="card" onclick="navigate('product', ${p.id})"><img src="${p.image}" loading="lazy"><div style="padding: 8px 12px;"><h3>${p.name}</h3></div></div>`).join("");
+function closeFilterSheet() {
+  document.getElementById("filter-overlay").style.opacity = "0";
+  document.getElementById("filter-sheet").style.bottom = "-100%";
+  setTimeout(() => document.getElementById("filter-overlay").style.display = "none", 300);
 }
 
 // --- OTHER PAGES ---
@@ -399,7 +404,23 @@ async function loadSingleProduct(id) {
   } catch(e) { el.innerHTML = "<p style='padding:16px;'>Error loading product.</p>"; }
 }
 
-// --- CART LOGIC ---
+// --- WISHLIST & CART ---
+function getWishlist() { return JSON.parse(localStorage.getItem("native_wishlist") || "[]"); }
+function saveWishlist(w) { localStorage.setItem("native_wishlist", JSON.stringify(w)); }
+function toggleWishlist(id, name, price, image) {
+  let w = getWishlist(); let exists = w.find(item => item.id === id);
+  if (exists) { w = w.filter(item => item.id !== id); showToast("Removed from Wishlist"); } 
+  else { w.push({ id, name, price: parseFloat(price), image }); showToast("✓ Added to Wishlist"); }
+  saveWishlist(w);
+  if (window.location.hash === "#search-results") applyFilters();
+  if (window.location.hash === "#wishlist") renderWishlistPage();
+}
+function renderWishlistPage() {
+  const w = getWishlist(); const grid = document.getElementById("wishlist-grid");
+  if (w.length === 0) { grid.innerHTML = "<div style='grid-column: span 2; text-align: center; padding: 40px;'><i class='fa-regular fa-heart' style='font-size:48px; color:#ccc; margin-bottom:16px;'></i><h3>Your wishlist is empty</h3></div>"; return; }
+  grid.innerHTML = w.map(p => `<div class="card" onclick="navigate('product', ${p.id})"><img src="${p.image}" loading="lazy"><div style="padding: 8px 12px;"><h3>${p.name}</h3></div></div>`).join("");
+}
+
 function getCart() { return JSON.parse(localStorage.getItem("native_cart") || "[]"); }
 function saveCart(cart) { localStorage.setItem("native_cart", JSON.stringify(cart)); updateCartBadge(); }
 function addToCart(id, name, price, image) {
