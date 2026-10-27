@@ -9,12 +9,9 @@
   <link rel="stylesheet" href="style.css?v=99">
   <title>My Store</title>
   <script>
-    // KILL SERVICE WORKER AND CLEAR CACHE ON LOAD
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(function(registrations) {
-        for(let registration of registrations) {
-          registration.unregister();
-        }
+        for(let registration of registrations) { registration.unregister(); }
       });
     }
     if ('caches' in window) {
@@ -28,6 +25,6 @@
   <div id="page-container"></div>
   <nav id="tabbar"></nav>
   <script src="config.js?v=99"></script>
-  <script src="app.js?v=1000
+  <script src="app.js?v=1001"></script>
 </body>
 </html>
