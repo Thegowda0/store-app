@@ -394,91 +394,44 @@ var _carouselIndex = 0;
 var _carouselTimer = null;
 
 async function loadReviewsCarousel(productId) {
+  console.log("LOADING CAROUSEL FOR ID:", productId);
   var el = document.getElementById("reviews-carousel");
   var dots = document.getElementById("carousel-dots");
-  var headingCount = document.getElementById("reviews-heading-count");
-  
   if (!el) return;
-  el.innerHTML = '<p style="color:#888;padding:20px 0;">Loading reviews...</p>';
-
-  var reviews = [];
-  var targetUrl = APP_CONFIG.siteUrl + "/?p=" + productId;
-  // Use CORS proxy to bypass GitHub Pages -> WooCommerce block
-  var proxyUrl = "https://api.allorigins.win/get?url=" + encodeURIComponent(targetUrl);
 
   try {
-    var pageRes = await fetch(proxyUrl);
-    if (!pageRes.ok) throw new Error("Proxy fetch failed: " + pageRes.status);
-    var proxyData = await pageRes.json();
-    var htmlText = proxyData.contents;
+    var res = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/reviews?product_id=" + productId);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    var data = await res.json();
     
-    var parser = new DOMParser();
-    var doc = parser.parseFromString(htmlText, "text/html");
-    var reviewItems = doc.querySelectorAll(".ns-product-review");
-    
-    reviewItems.forEach(function(item) {
-      var author = item.querySelector(".woocommerce-review__author") ? item.querySelector(".woocommerce-review__author").textContent.trim() : "Anonymous";
-      var text = item.querySelector(".description") ? item.querySelector(".description").textContent.replace("[...]", "").trim() : "";
-      var ratingEl = item.querySelector(".star-rating");
-      var rating = 5;
-      if (ratingEl && ratingEl.getAttribute("aria-label")) {
-        var match = ratingEl.getAttribute("aria-label").match(/Rated (\d) out/);
-        if (match) rating = parseInt(match[1]);
-      }
-      var avatar = item.querySelector(".avatar") ? item.querySelector(".avatar").src : "";
-      
-      var images = [];
-      var imgEls = item.querySelectorAll(".nasa-wrap-review-thumb img");
-      imgEls.forEach(function(img) { images.push(img.src); });
+    if (!data || data.length === 0) {
+      el.innerHTML = '<p style="color:#888;">No reviews yet.</p>';
+      return;
+    }
 
-      reviews.push({
-        name: author,
-        text: text,
-        rating: rating,
-        avatar: avatar,
-        images: images
-      });
+    _carouselData = data.map(function(r) {
+      return {
+        name: r.reviewer || "Anonymous",
+        text: (r.review || "").replace(/<[^>]*>/g, "").trim(),
+        rating: parseInt(r.rating) || 5,
+        avatar: (r.reviewer_avatar_urls && r.reviewer_avatar_urls["48"]) ? r.reviewer_avatar_urls["48"] : ""
+      };
     });
+    
+    _carouselIndex = 0;
+    renderCarouselSlide();
+    
+    if (_carouselTimer) clearInterval(_carouselTimer);
+    _carouselTimer = setInterval(function() {
+      if (_carouselData.length < 2) return;
+      _carouselIndex = (_carouselIndex + 1) % _carouselData.length;
+      renderCarouselSlide();
+    }, 5000);
 
   } catch (err) {
-    console.log("CORS Proxy scraping failed:", err);
-    // Fallback to WC API (will work if CORS isn't blocking the API)
-    try {
-      var res = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/reviews?product_id=" + productId + "&per_page=100");
-      if (res.ok) {
-        var data = await res.json();
-        reviews = data.map(function(r) {
-          return {
-            name: r.reviewer || "Anonymous",
-            text: (r.review || "").replace(/<[^>]*>/g, "").trim(),
-            rating: parseInt(r.rating) || 5,
-            avatar: (r.reviewer_avatar_urls && r.reviewer_avatar_urls["48"]) ? r.reviewer_avatar_urls["48"] : "",
-            images: []
-          };
-        });
-      }
-    } catch(e) { console.log("API fallback also failed", e); }
+    console.log("CAROUSEL FETCH ERROR:", err);
+    el.innerHTML = '<p style="color:#d33;">Error: ' + err.message + '</p>';
   }
-
-  if (reviews.length === 0) {
-    if (headingCount) headingCount.textContent = "(0)";
-    el.innerHTML = '<p style="color:#888;padding:20px 0;">No reviews yet - be the first to review this product.</p>';
-    if (dots) dots.innerHTML = "";
-    return;
-  }
-
-  if (headingCount) headingCount.textContent = "(" + reviews.length + ")";
-  _carouselData = reviews;
-  _carouselIndex = 0;
-  
-  renderCarouselSlide();
-  
-  if (_carouselTimer) clearInterval(_carouselTimer);
-  _carouselTimer = setInterval(function() {
-    if (_carouselData.length < 2) return;
-    _carouselIndex = (_carouselIndex + 1) % _carouselData.length;
-    renderCarouselSlide();
-  }, 10000);
 }
 
 function renderCarouselSlide() {
