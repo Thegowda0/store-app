@@ -2,7 +2,6 @@
 // 1. GLOBAL STATE & INITIALIZATION
 // ==========================================
 const container = document.getElementById("page-container");
-const tabbar = document.getElementById("tabbar");
 
 let globalProducts = [];
 let currentSearchQuery = "";
@@ -16,11 +15,6 @@ let paginatedCache = [];
 
 let currentProduct = null;
 let selectedAttributes = {};
-let productQty = 1;
-let sheetQty = 1;
-let activeThumb = null;
-let viewerImages = [];
-let viewerIndex = 0;
 
 function getEmptyFilters() {
   return { sort: "relevance", category: null, minPrice: 0, maxPrice: 10000, minDiscount: 0, attributes: {} };
@@ -344,7 +338,7 @@ function resetSpecificFilter(type, key) {
 function resetFilters() { draftFilters = getEmptyFilters(); draftFilters.minPrice = minProductPrice; draftFilters.maxPrice = maxProductPrice; buildAmazonSidebar(); updateFilterCountPreview(); }
 
 // ==========================================
-// 4. PRODUCT DETAILS PAGE (FULLY REBUILT)
+// 4. PRODUCT DETAILS PAGE
 // ==========================================
 async function loadSingleProduct(id) {
   const el = document.getElementById("product-detail");
@@ -445,22 +439,55 @@ function selectAttribute(attrName, termName) {
 async function fetchInlineReviews(productId) {
   const box = document.getElementById("inline-reviews-container");
   if (!box) return;
+  
   try {
-    const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products/reviews?product_id=${productId}&per_page=3`);
+    // 1. Fetch using CORS proxy to bypass GitHub Pages restrictions
+    const proxyUrl = "https://api.allorigins.win/get?url=" + encodeURIComponent(APP_CONFIG.siteUrl + "/?p=" + productId);
+    const res = await fetch(proxyUrl);
     const data = await res.json();
-    if (!data || data.length === 0) {
+    
+    // 2. Parse HTML
+    const doc = new DOMParser().parseFromString(data.contents, "text/html");
+    const items = doc.querySelectorAll(".ns-product-review");
+    
+    if (items.length === 0) {
       box.innerHTML = "<p style='color:#888;font-size:13px;'>No reviews found.</p>";
       return;
     }
-    let html = "<div style='display:flex;flex-direction:column;gap:12px;'>";
-    data.forEach(r => {
-      let avatar = r.reviewer_avatar_urls?.["48"] || "";
-      let text = (r.review || "").replace(/<[^>]*>/g, "").trim();
-      html += `<div style="display:flex; gap:12px; border-bottom:1px solid #eee; padding-bottom:12px;"><img src="${avatar}" style="width:36px; height:36px; border-radius:50%;"><div><div style="font-size:13px; font-weight:700;">${r.reviewer}</div><div style="color:#FFD700; font-size:12px;">★★★★★</div><div style="font-size:13px; color:#555; margin-top:4px;">${text}</div></div></div>`;
-    });
-    html += "</div>";
+
+    let html = `<div style="display:flex; flex-direction:column; gap:12px;">`;
+    for (let i = 0; i < Math.min(items.length, 3); i++) {
+      let item = items[i];
+      let author = item.querySelector(".woocommerce-review__author")?.textContent.trim() || "User";
+      let text = item.querySelector(".description")?.textContent.replace("[...]", "").trim() || "";
+      let avatar = item.querySelector(".avatar")?.src || "";
+      
+      let imagesHtml = "";
+      let imgEls = item.querySelectorAll(".nasa-wrap-review-thumb img");
+      if (imgEls.length > 0) {
+        imagesHtml = `<div style="display:flex; gap:8px; margin-top:8px; overflow-x:auto;">` + 
+          Array.from(imgEls).map(img => `<img src="${img.src}" style="height:60px; width:60px; object-fit:cover; border-radius:6px;">`).join("") + 
+          `</div>`;
+      }
+
+      html += `
+        <div style="display:flex; gap:12px; border-bottom:1px solid #eee; padding-bottom:12px;">
+          <img src="${avatar}" style="width:36px; height:36px; border-radius:50%;">
+          <div style="flex:1;">
+            <div style="font-size:13px; font-weight:700;">${author}</div>
+            <div style="color:#FFD700; font-size:12px;">★★★★★</div>
+            <div style="font-size:13px; color:#555; margin-top:4px;">${text}</div>
+            ${imagesHtml}
+          </div>
+        </div>`;
+    }
+    html += `</div>`;
     box.innerHTML = html;
-  } catch (e) { box.innerHTML = "<p style='color:#888;font-size:13px;'>Error loading reviews.</p>"; }
+
+  } catch (err) {
+    console.log("Inline review error:", err);
+    box.innerHTML = "<p style='color:#888;font-size:13px;'>Unable to load reviews.</p>";
+  }
 }
 
 async function loadGroupedList(p) {
@@ -621,8 +648,6 @@ function renderCart() {
   }).join("");
   document.getElementById("cart-total").textContent = `$${(total / 100).toFixed(2)}`; summary.style.display = "block";
 }
-
-function changePage(direction) { currentPage += direction; renderSearchResultsGrid(paginatedCache); }
 
 // INIT
 updateCartBadge();
