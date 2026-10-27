@@ -250,36 +250,31 @@ function renderExternalProduct(p) {
 function renderProductPage(p) {
   var el = document.getElementById("product-detail");
   var stickyBar = document.getElementById("product-sticky-bar");
-  var mainImg = _productImages[0] || "";
-  var catName = (p.categories && p.categories.length > 0) ? p.categories[0].name : "";
-  var catSlug = (p.categories && p.categories.length > 0) ? p.categories[0].slug : "";
-  var brandName = (p.brands && p.brands.length > 0) ? p.brands[0].name : "";
-  var brandSlug = (p.brands && p.brands.length > 0) ? p.brands[0].slug : "";
+  if (!el) return;
+  
+  var mainImg = (p.images && p.images[0] && p.images[0].src) ? p.images[0].src : "";
+  var category = (p.categories && p.categories.length > 0) ? p.categories[0].name : "";
+  var categorySlug = (p.categories && p.categories.length > 0) ? p.categories[0].slug : "";
+  var brand = (p.brands && p.brands.length > 0) ? p.brands[0].name : "";
+  var safeName = (p.name || "").replace(/'/g, "\\'");
+  var thumbSrc = (p.images && p.images[0]) ? p.images[0].thumbnail : "";
+  var priceVal = (p.prices && p.prices.price) ? p.prices.price : 0;
   var isWished = getWishlist().some(function(w) { return w.id === p.id; });
 
   var html = "";
 
-  // Main image + glass header
+  // Header image + glass buttons
   html += '<div style="position: relative; background: #fff;">';
   html += '<img id="main-product-img" onclick="openImageViewer(0)" src="' + mainImg + '" style="width:100%; aspect-ratio: 1/1; object-fit: cover; cursor: pointer;">';
   html += '<div style="position: absolute; top: 0; left: 0; right: 0; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">';
   html += '<div onclick="navigate(\'home\', null, true)" style="width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"><i class="fa-solid fa-arrow-down" style="color: #111; font-size: 16px;"></i></div>';
   html += '<div style="display: flex; gap: 8px;">';
-  html += '<div onclick="toggleProductHeart()" style="width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"><i id="product-heart-icon" class="' + (isWished ? "fa-solid" : "fa-regular") + ' fa-heart" style="color: ' + (isWished ? "#FF4B2B" : "#111") + '; font-size: 16px;"></i></div>';
+  html += '<div onclick="toggleProductHeart()" style="width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"><i id="product-heart-icon" class="' + (isWished ? 'fa-solid' : 'fa-regular') + ' fa-heart" style="color: ' + (isWished ? '#FF4B2B' : '#111') + '; font-size: 16px;"></i></div>';
   html += '<div onclick="navigate(\'search\', null, true)" style="width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"><i class="fa-solid fa-magnifying-glass" style="color: #111; font-size: 16px;"></i></div>';
-  html += '<div onclick="shareProduct()" style="width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"><i class="fa-solid fa-share-nodes" style="color: #111; font-size: 16px;"></i></div>';
+  html += '<div onclick="shareProduct(\'' + safeName + '\', \'' + (p.permalink || "") + '\')" style="width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"><i class="fa-solid fa-share-nodes" style="color: #111; font-size: 16px;"></i></div>';
   html += '</div></div></div>';
 
-  // Thumbnails
-  if (_productImages.length > 1) {
-    html += '<div style="display: flex; gap: 8px; padding: 12px 16px; overflow-x: auto; background: #fff; border-bottom: 1px solid #eee;">';
-    _productImages.forEach(function(img, i) {
-      html += '<img onclick="openImageViewer(' + i + ')" src="' + img + '" style="width: 60px; height: 60px; border-radius: 8px; object-fit: cover; cursor: pointer; border: 1px solid #eee; flex-shrink: 0;">';
-    });
-    html += '</div>';
-  }
-
-  // Price, title, rating
+  // Title + price
   html += '<div style="background: #fff; padding: 16px;">';
   html += '<div style="font-size: 26px; font-weight: 800; color: #111; margin-bottom: 8px;">' + (p.price_html || "") + '</div>';
   html += '<h1 style="font-size: 20px; font-weight: 600; color: #333; margin-bottom: 12px; line-height: 1.3;">' + (p.name || "") + '</h1>';
@@ -287,105 +282,105 @@ function renderProductPage(p) {
   html += '<div style="color: #FFD700; font-size: 14px;">★★★★★</div>';
   html += '<span style="font-size: 13px; color: #888;">(' + (p.review_count || 0) + ' reviews)</span>';
   html += '</div>';
-  if (brandName || catName) {
+  if (brand || category) {
     html += '<div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">';
-    if (brandName) html += '<div onclick="navigate(\'webview\', \'brand/' + brandSlug + '\', true)" style="padding: 6px 12px; background: #f0f0f0; border-radius: 20px; font-size: 12px; font-weight: 600; color: #333; cursor: pointer;">Brand: ' + brandName + '</div>';
-    if (catName) html += '<div onclick="navigate(\'webview\', \'category/' + catSlug + '\', true)" style="padding: 6px 12px; background: #f0f0f0; border-radius: 20px; font-size: 12px; font-weight: 600; color: #333; cursor: pointer;">Category: ' + catName + '</div>';
+    if (brand) html += '<div onclick="navigate(\'webview\', \'brand/' + (p.brands[0].slug || "") + '\', true)" style="padding: 6px 12px; background: #f0f0f0; border-radius: 20px; font-size: 12px; font-weight: 600; color: #333; cursor: pointer;">Brand: ' + brand + '</div>';
+    if (category) html += '<div onclick="navigate(\'webview\', \'category/' + categorySlug + '\', true)" style="padding: 6px 12px; background: #f0f0f0; border-radius: 20px; font-size: 12px; font-weight: 600; color: #333; cursor: pointer;">Category: ' + category + '</div>';
     html += '</div>';
   }
   html += '</div>';
-
-  // Attributes
-  if (p.attributes && p.attributes.length > 0) {
-    html += '<div style="background: #fff; padding: 16px; margin-top: 8px;">';
-    p.attributes.forEach(function(attr) {
-      if (!attr.terms || attr.terms.length === 0) return;
-      html += '<div style="margin-bottom: 20px;">';
-      html += '<div style="display: flex; justify-content: space-between; margin-bottom: 10px;">';
-      html += '<h4 style="font-size: 13px; font-weight: 700; color: #333; text-transform: uppercase;">' + attr.name + '</h4>';
-      html += '<span style="font-size: 12px; color: #888;" id="attr-label-' + attr.name.replace(/\s/g, "") + '">' + (_selectedAttributes[attr.name] || "") + '</span>';
-      html += '</div><div style="display: flex; flex-wrap: wrap; gap: 8px;">';
-      attr.terms.forEach(function(term) {
-        var isSelected = _selectedAttributes[attr.name] === term.name;
-        var attrKey = attr.name.replace(/\s/g, "");
-        var termKey = term.name.replace(/\s/g, "");
-        html += '<div onclick="selectProductAttribute(\'' + attr.name + '\', \'' + term.name + '\')" id="prod-attr-' + attrKey + "-" + termKey + '" style="padding: 10px 18px; border-radius: 50px; border: 1px solid ' + (isSelected ? "#111" : "#ddd") + '; background: ' + (isSelected ? "#111" : "#fff") + '; color: ' + (isSelected ? "#fff" : "#333") + '; font-size: 14px; cursor: pointer; font-weight: 500;">' + term.name + '</div>';
-      });
-      html += '</div></div>';
-    });
-    html += '</div>';
-  }
 
   // Product Information
   html += '<div style="background: #fff; padding: 16px; margin-top: 8px;">';
   html += '<h3 style="font-size: 16px; font-weight: 700; margin-bottom: 12px;">Product Information</h3>';
   html += '<div style="font-size: 14px; color: #555; line-height: 1.6;">' + (p.description || p.short_description || "No description available.") + '</div>';
-  if (p.sku) html += '<div style="margin-top: 12px; font-size: 13px; color: #888;">SKU: ' + p.sku + '</div>';
-  if (p.is_in_stock === false) html += '<div style="margin-top: 8px; font-size: 13px; color: #d33; font-weight: 600;">Out of Stock</div>';
-  else html += '<div style="margin-top: 8px; font-size: 13px; color: #008C4A; font-weight: 600;">In Stock</div>';
   html += '</div>';
 
-  // Similar products
-  if (catSlug) {
-    var similar = globalProducts.filter(function(x) {
-      return x.id !== p.id && x.categories.some(function(c) { return c.slug === catSlug; });
-    }).slice(0, 10);
-    if (similar.length > 0) {
-      html += '<div style="background: #fff; padding: 16px; margin-top: 8px;">';
-      html += '<h3 style="font-size: 16px; font-weight: 700; margin-bottom: 12px;">Similar Products</h3>';
-      html += '<div style="display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px;">';
-      similar.forEach(function(s) {
-        var thumb = (s.images && s.images[0]) ? s.images[0].thumbnail : "";
-        html += '<div onclick="navigate(\'product\', ' + s.id + ')" style="min-width: 140px; cursor: pointer;">';
-        html += '<img src="' + thumb + '" style="width: 140px; height: 140px; border-radius: 8px; object-fit: cover; background: #f5f5f5;">';
-        html += '<div style="font-size: 13px; font-weight: 600; margin-top: 6px; color: #111; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' + s.name + '</div>';
-        html += '</div>';
-      });
-      html += '</div></div>';
-    }
-  }
-
-  // Top rated
-  if (catSlug) {
-    var top = globalProducts.filter(function(x) {
-      return x.id !== p.id && x.categories.some(function(c) { return c.slug === catSlug; });
-    }).sort(function(a, b) { return parseFloat(b.average_rating || 0) - parseFloat(a.average_rating || 0); }).slice(0, 10);
-    if (top.length > 0 && parseFloat(top[0].average_rating) > 0) {
-      html += '<div style="background: #fff; padding: 16px; margin-top: 8px;">';
-      html += '<h3 style="font-size: 16px; font-weight: 700; margin-bottom: 12px;">Top Rated in ' + catName + '</h3>';
-      html += '<div style="display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px;">';
-      top.forEach(function(s) {
-        var thumb = (s.images && s.images[0]) ? s.images[0].thumbnail : "";
-        html += '<div onclick="navigate(\'product\', ' + s.id + ')" style="min-width: 140px; cursor: pointer;">';
-        html += '<img src="' + thumb + '" style="width: 140px; height: 140px; border-radius: 8px; object-fit: cover; background: #f5f5f5;">';
-        html += '<div style="font-size: 13px; font-weight: 600; margin-top: 6px; color: #111; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' + s.name + '</div>';
-        html += '<div style="font-size: 12px; color: #666; margin-top: 2px;">Star ' + parseFloat(s.average_rating || 0).toFixed(1) + '</div>';
-        html += '</div>';
-      });
-      html += '</div></div>';
-    }
-  }
-
-  // Reviews - always show section, carousel handles empty state
+  // Static Reviews Section (Directly injected, no async)
   html += '<div id="reviews-section-card" style="background: #fff; padding: 16px; margin-top: 8px;">';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">';
-  html += '<h3 style="font-size: 16px; font-weight: 700;">What Customers Say <span id="reviews-heading-count"></span></h3>';
+  html += '<h3 style="font-size: 16px; font-weight: 700;">What Customers Say</h3>';
   html += '<div onclick="navigate(\'reviews\', ' + p.id + ', true)" style="font-size:13px;color:#FF4B2B;font-weight:600;cursor:pointer;">See All</div>';
   html += '</div>';
-  html += '<div id="reviews-carousel" style="position:relative;overflow:hidden;min-height:130px;">';
-  html += '<p style="color:#888;padding:20px 0;">Loading reviews...</p>';
-  html += '</div>';
-  html += '<div id="carousel-dots" style="display:flex;justify-content:center;gap:6px;margin-top:10px;"></div>';
+  html += '<div id="reviews-static-content"><p style="color:#888;padding:12px 0;">Loading reviews...</p></div>';
   html += '</div>';
 
   el.innerHTML = html;
 
-  var stickyPrice = document.getElementById("sticky-price");
-  var stickySummary = document.getElementById("sticky-attr-summary");
-  if (stickyPrice) stickyPrice.textContent = (p.prices && p.prices.price) ? "$" + (parseInt(p.prices.price) / 100).toFixed(2) : "$0.00";
-  if (stickySummary) stickySummary.textContent = Object.values(_selectedAttributes).join(", ");
-  stickyBar.style.display = "block";
-  updateProductAddButton();
+  // Sticky Bar
+  if (p.is_purchasable === false || p.type === "grouped" || p.type === "external") {
+    if (stickyBar) stickyBar.style.display = "none";
+  } else {
+    var stickyPrice = document.getElementById("sticky-price");
+    if (stickyPrice) stickyPrice.textContent = (p.prices && p.prices.price) ? "$" + (parseInt(p.prices.price) / 100).toFixed(2) : "$0.00";
+    if (stickyBar) stickyBar.style.display = "block";
+    try { updateProductAddButton(); } catch(e) {}
+  }
+
+  // Fire off the static review loader
+  try { loadStaticReviews(p.id); } catch(e) { console.log("Static review error:", e); }
+}
+
+async function loadStaticReviews(productId) {
+  var el = document.getElementById("reviews-static-content");
+  if (!el) return;
+  
+  try {
+    var res = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/reviews?product_id=" + productId);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    var data = await res.json();
+    
+    if (!data || data.length === 0) {
+      el.innerHTML = '<p style="color:#888;padding:12px 0;">No reviews yet.</p>';
+      return;
+    }
+    
+    var html = '<div style="display:flex;flex-direction:column;gap:12px;">';
+    data.forEach(function(r) {
+      var stars = "";
+      for (var i = 0; i < 5; i++) stars += (i < (parseInt(r.rating) || 5) ? "★" : "☆");
+      var avatar = (r.reviewer_avatar_urls && r.reviewer_avatar_urls["48"]) ? r.reviewer_avatar_urls["48"] : "";
+      var imgHtml = avatar ? '<img src="' + avatar + '" style="width:32px;height:32px;border-radius:50%;margin-right:8px;">' : "";
+      
+      html += '<div style="display:flex;gap:12px;padding-bottom:12px;border-bottom:1px solid #f0f0f0;">';
+      html += '<div>' + imgHtml + '</div>';
+      html += '<div>';
+      html += '<div style="font-size:13px;font-weight:700;">' + (r.reviewer || "Anonymous") + '</div>';
+      html += '<div style="color:#FFD700;font-size:12px;">' + stars + '</div>';
+      html += '<div style="font-size:12px;color:#555;margin-top:4px;">' + (r.review || "").replace(/<[^>]*>/g, "").trim() + '</div>';
+      html += '</div></div>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
+    
+  } catch (err) {
+    // Fallback to proxy
+    try {
+      var proxyRes = await fetch("https://api.allorigins.win/get?url=" + encodeURIComponent(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/reviews?product_id=" + productId));
+      var proxyData = await proxyRes.json();
+      var data = JSON.parse(proxyData.contents);
+      if (!data || data.length === 0) { el.innerHTML = '<p style="color:#888;">No reviews yet.</p>'; return; }
+      
+      var html = '<div style="display:flex;flex-direction:column;gap:12px;">';
+      data.forEach(function(r) {
+        var stars = "";
+        for (var i = 0; i < 5; i++) stars += (i < (parseInt(r.rating) || 5) ? "★" : "☆");
+        var avatar = (r.reviewer_avatar_urls && r.reviewer_avatar_urls["48"]) ? r.reviewer_avatar_urls["48"] : "";
+        var imgHtml = avatar ? '<img src="' + avatar + '" style="width:32px;height:32px;border-radius:50%;margin-right:8px;">' : "";
+        html += '<div style="display:flex;gap:12px;padding-bottom:12px;border-bottom:1px solid #f0f0f0;">';
+        html += '<div>' + imgHtml + '</div>';
+        html += '<div>';
+        html += '<div style="font-size:13px;font-weight:700;">' + (r.reviewer || "Anonymous") + '</div>';
+        html += '<div style="color:#FFD700;font-size:12px;">' + stars + '</div>';
+        html += '<div style="font-size:12px;color:#555;margin-top:4px;">' + (r.review || "").replace(/<[^>]*>/g, "").trim() + '</div>';
+        html += '</div></div>';
+      });
+      html += '</div>';
+      el.innerHTML = html;
+    } catch(e) {
+      el.innerHTML = '<p style="color:#d33;padding:12px;">Error: ' + e.message + '</p>';
+    }
+  }
 }
 
 // ==================== REVIEWS CAROUSEL ====================
