@@ -394,18 +394,24 @@ var _carouselIndex = 0;
 var _carouselTimer = null;
 
 async function loadReviewsCarousel(productId) {
-  console.log("LOADING CAROUSEL FOR ID:", productId);
+  console.log("FETCHING REVIEWS FOR PRODUCT:", productId);
   var el = document.getElementById("reviews-carousel");
   var dots = document.getElementById("carousel-dots");
+  var headingCount = document.getElementById("reviews-heading-count");
   if (!el) return;
 
+  // Use CORS proxy to guarantee the fetch works
+  var targetUrl = APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/reviews?product_id=" + productId + "&per_page=10";
+  var proxyUrl = "https://api.allorigins.win/get?url=" + encodeURIComponent(targetUrl);
+
   try {
-    var res = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/reviews?product_id=" + productId);
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    var data = await res.json();
+    var res = await fetch(proxyUrl);
+    if (!res.ok) throw new Error("Proxy HTTP " + res.status);
+    var jsonWrapper = await res.json();
+    var data = JSON.parse(jsonWrapper.contents); // AllOrigins returns stringified JSON
     
     if (!data || data.length === 0) {
-      el.innerHTML = '<p style="color:#888;">No reviews yet.</p>';
+      el.innerHTML = '<p style="color:#888;padding:20px 0;">No reviews yet.</p>';
       return;
     }
 
@@ -418,6 +424,7 @@ async function loadReviewsCarousel(productId) {
       };
     });
     
+    if (headingCount) headingCount.textContent = "(" + _carouselData.length + ")";
     _carouselIndex = 0;
     renderCarouselSlide();
     
@@ -429,8 +436,8 @@ async function loadReviewsCarousel(productId) {
     }, 5000);
 
   } catch (err) {
-    console.log("CAROUSEL FETCH ERROR:", err);
-    el.innerHTML = '<p style="color:#d33;">Error: ' + err.message + '</p>';
+    console.log("CAROUSEL PROXY FETCH ERROR:", err);
+    el.innerHTML = '<p style="color:#d33;padding:20px 0;">Error: ' + err.message + '</p>';
   }
 }
 
