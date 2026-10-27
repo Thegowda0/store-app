@@ -394,17 +394,13 @@ var _carouselIndex = 0;
 var _carouselTimer = null;
 
 async function loadReviewsCarousel(productId) {
-  console.log("LOADING REVIEWS FOR:", productId);
   var el = document.getElementById("reviews-carousel");
   var headingCount = document.getElementById("reviews-heading-count");
   if (!el) return;
 
-  // Use a direct WC API call, but with a fallback proxy in case CORS blocks it
-  var targetUrl = APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/reviews?product_id=" + productId + "&per_page=10";
-  
+  // Just fetch it natively
   try {
-    var res = await fetch(targetUrl);
-    if (!res.ok) throw new Error("HTTP " + res.status);
+    var res = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/reviews?product_id=" + productId);
     var data = await res.json();
     
     if (!data || data.length === 0) {
@@ -414,7 +410,6 @@ async function loadReviewsCarousel(productId) {
     
     if (headingCount) headingCount.textContent = "(" + data.length + ")";
     
-    // Build static list of reviews
     var html = '<div style="display:flex;flex-direction:column;gap:12px;">';
     data.forEach(function(r) {
       var stars = "";
@@ -434,41 +429,8 @@ async function loadReviewsCarousel(productId) {
     el.innerHTML = html;
     
   } catch (err) {
-    console.log("FETCH FAILED, USING PROXY:", err);
-    // Fallback to CORS proxy
-    try {
-      var proxyRes = await fetch("https://api.allorigins.win/get?url=" + encodeURIComponent(targetUrl));
-      var proxyData = await proxyRes.json();
-      var data = JSON.parse(proxyData.contents);
-      
-      if (!data || data.length === 0) {
-        el.innerHTML = '<p style="color:#888;padding:12px;">No reviews yet.</p>';
-        return;
-      }
-      
-      if (headingCount) headingCount.textContent = "(" + data.length + ")";
-      
-      var html = '<div style="display:flex;flex-direction:column;gap:12px;">';
-      data.forEach(function(r) {
-        var stars = "";
-        for (var i = 0; i < 5; i++) stars += (i < (parseInt(r.rating) || 5) ? "★" : "☆");
-        var avatar = (r.reviewer_avatar_urls && r.reviewer_avatar_urls["48"]) ? r.reviewer_avatar_urls["48"] : "";
-        var imgHtml = avatar ? '<img src="' + avatar + '" style="width:32px;height:32px;border-radius:50%;margin-right:8px;">' : "";
-        
-        html += '<div style="display:flex;gap:12px;padding-bottom:12px;border-bottom:1px solid #f0f0f0;">';
-        html += '<div>' + imgHtml + '</div>';
-        html += '<div>';
-        html += '<div style="font-size:13px;font-weight:700;">' + (r.reviewer || "Anonymous") + '</div>';
-        html += '<div style="color:#FFD700;font-size:12px;">' + stars + '</div>';
-        html += '<div style="font-size:12px;color:#555;margin-top:4px;">' + (r.review || "").replace(/<[^>]*>/g, "").trim() + '</div>';
-        html += '</div></div>';
-      });
-      html += '</div>';
-      el.innerHTML = html;
-      
-    } catch(e) {
-      el.innerHTML = '<p style="color:#d33;padding:12px;">Error: ' + e.message + '</p>';
-    }
+    console.log("REVIEWS FETCH ERROR:", err);
+    el.innerHTML = '<p style="color:#d33;padding:12px;">Error: ' + err.message + '</p>';
   }
 }
 
