@@ -5,8 +5,8 @@ const container = document.getElementById("page-container");
 
 let globalProducts = [];
 let currentSearchQuery = "";
-let appliedFilters = getEmptyFilters();
-let draftFilters = getEmptyFilters();
+let appliedFilters = { sort: "relevance", category: null, minPrice: 0, maxPrice: 10000, minDiscount: 0, attributes: {} };
+let draftFilters = { sort: "relevance", category: null, minPrice: 0, maxPrice: 10000, minDiscount: 0, attributes: {} };
 let minProductPrice = 0;
 let maxProductPrice = 10000;
 let activeSidebarTab = "sort";
@@ -16,16 +16,12 @@ let paginatedCache = [];
 let currentProduct = null;
 let selectedAttributes = {};
 
-function getEmptyFilters() {
-  return { sort: "relevance", category: null, minPrice: 0, maxPrice: 10000, minDiscount: 0, attributes: {} };
-}
-
 function showToast(message) {
   let toast = document.getElementById("toast");
   if (!toast) {
     toast = document.createElement("div");
     toast.id = "toast";
-    toast.style.cssText = "position:fixed; bottom:80px; left:50%; transform:translateX(-50%) translateY(20px); background:#111; color:#fff; padding:12px 24px; border-radius:30px; font-size:14px; font-weight:500; opacity:0; transition:all 0.3s; z-index:9999; box-shadow:0 4px 12px rgba(0,0,0,0.2);";
+    toast.style.cssText = "position:fixed; bottom:80px; left:50%; transform:translateX(-50%) translateY(20px); background:#111; color:#fff; padding:12px 24px; border-radius:30px; font-size:14px; font-weight:500; opacity:0; transition:all 0.3s; z-index:9999;";
     document.body.appendChild(toast);
   }
   toast.textContent = message;
@@ -72,7 +68,7 @@ async function navigate(pageId, param = null, pushHistory = true) {
       if (pageId === "cart") renderCart();
     } catch (e) { 
       container.innerHTML = `<p style="padding:20px;">Error loading page: ${pageId}</p>`; 
-      console.log(e);
+      console.log("Navigation error:", e);
     }
   } else {
     const path = APP_CONFIG.webviewRoutes[pageId] || "/" + pageId;
@@ -85,17 +81,25 @@ async function navigate(pageId, param = null, pushHistory = true) {
 }
 
 // ==========================================
-// 3. SEARCH & FILTERS
+// 3. SEARCH & FILTERS (Fixed)
 // ==========================================
-async function initSearchPage() {
+function initSearchPage() {
   if (globalProducts.length === 0) {
-    try { const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products?per_page=50`); globalProducts = await res.json(); } catch(e) { return; }
+    fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products?per_page=50`)
+      .then(res => res.json())
+      .then(data => { globalProducts = data; renderTrending(); })
+      .catch(e => console.log(e));
+  } else {
+    renderTrending();
   }
-  const trending = document.getElementById("trending-search");
-  if (trending) {
-    trending.innerHTML = globalProducts.slice(0, 4).map(p => `
-      <div class="card" onclick="navigate('product', ${p.id})"><img src="${p.images[0]?.thumbnail || ''}" loading="lazy"><h3>${p.name}</h3><div class="price">${p.price_html}</div></div>
-    `).join("");
+  
+  function renderTrending() {
+    const trending = document.getElementById("trending-search");
+    if (trending) {
+      trending.innerHTML = globalProducts.slice(0, 4).map(p => `
+        <div class="card" onclick="navigate('product', ${p.id})"><img src="${p.images[0]?.thumbnail || ''}" loading="lazy"><h3>${p.name}</h3><div class="price">${p.price_html}</div></div>
+      `).join("");
+    }
   }
   renderRecentSearches();
   setTimeout(() => { const inp = document.getElementById("search-page-input"); if(inp) inp.focus(); }, 100);
@@ -106,7 +110,7 @@ function renderRecentSearches() {
   const el = document.getElementById("recent-searches");
   if (!el) return;
   if (recents.length === 0) { el.innerHTML = `<span style="font-size: 13px; color: #888;">No recent searches yet.</span>`; return; }
-  el.innerHTML = recents.map(term => `<div onclick="clickRecent('${term}')" style="padding: 8px 16px; border: 1px solid #eee; border-radius: 8px; font-size: 13px; color: #333; background: #fff; cursor: pointer; display: flex; align-items: center; gap: 8px;"><i class="fa-solid fa-clock-rotate-left" style="color: #999; font-size: 12px;"></i> ${term}</div>`).join("");
+  el.innerHTML = recents.map(term => `<div onclick="clickRecent('${term}')" style="padding: 8px 16px; border: 1px solid #eee; border-radius: 8px; font-size: 13px; color: #333; background: #fff; cursor: pointer;">${term}</div>`).join("");
 }
 
 function clickRecent(term) { document.getElementById("search-page-input").value = term; saveSearchHistory(term); goToSearchResults(); }
@@ -122,38 +126,52 @@ function executeSearch() {
   currentSearchQuery = query;
   const defaultState = document.getElementById("default-search-state");
   const activeState = document.getElementById("active-search-state");
-  if (query.length === 0) { defaultState.style.display = "block"; activeState.style.display = "none"; return; } 
-  else { defaultState.style.display = "none"; activeState.style.display = "block"; }
+  if (query.length === 0) { if(defaultState) defaultState.style.display = "block"; if(activeState) activeState.style.display = "none"; return; } 
+  else { if(defaultState) defaultState.style.display = "none"; if(activeState) activeState.style.display = "block"; }
   
   const filtered = globalProducts.filter(p => p.name.toLowerCase().includes(query));
   const listEl = document.getElementById("autocomplete-list");
+  if (!listEl) return;
   if (filtered.length === 0) { listEl.innerHTML = `<p style="font-size:14px; color:#666;">No results for "${query}"</p>`; return; }
   listEl.innerHTML = filtered.slice(0, 6).map(p => `<div onclick="saveSearchHistory('${p.name.replace(/'/g, "\\'")}'); navigate('product', ${p.id})" style="display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f0f0f0; cursor: pointer;"><img src="${p.images[0]?.thumbnail || ''}" style="width: 40px; height: 40px; border-radius: 6px; object-fit: cover;"><span style="font-size: 15px; font-weight: 500; color: #333;">${p.name}</span></div>`).join("");
 }
 
-function goToSearchResults() { saveSearchHistory(currentSearchQuery); appliedFilters = getEmptyFilters(); navigate('search-results'); }
+function goToSearchResults() { saveSearchHistory(currentSearchQuery); appliedFilters = { sort: "relevance", category: null, minPrice: 0, maxPrice: 10000, minDiscount: 0, attributes: {} }; navigate('search-results'); }
 
 function initSearchResultsPage() {
-  document.getElementById("results-search-label").textContent = currentSearchQuery || "All Products";
+  const label = document.getElementById("results-search-label");
+  if (label) label.textContent = currentSearchQuery || "All Products";
   currentPage = 1;
-  let searchProducts = globalProducts;
-  if (currentSearchQuery) searchProducts = globalProducts.filter(p => p.name.toLowerCase().includes(currentSearchQuery) || (p.description || "").toLowerCase().includes(currentSearchQuery));
   
-  if (searchProducts.length > 0) {
-    const prices = searchProducts.map(p => parseInt(p.prices.price) / 100);
-    minProductPrice = Math.floor(Math.min(...prices));
-    maxProductPrice = Math.ceil(Math.max(...prices));
-    appliedFilters.minPrice = minProductPrice;
-    appliedFilters.maxPrice = maxProductPrice;
-    draftFilters = JSON.parse(JSON.stringify(appliedFilters));
+  if (globalProducts.length === 0) {
+    fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products?per_page=50`)
+      .then(res => res.json())
+      .then(data => { globalProducts = data; processSearchResults(); })
+      .catch(e => console.log(e));
+  } else {
+    processSearchResults();
   }
-  applyFilters(); 
-  buildAmazonSidebar(); 
+  
+  function processSearchResults() {
+    let searchProducts = globalProducts;
+    if (currentSearchQuery) searchProducts = globalProducts.filter(p => p.name.toLowerCase().includes(currentSearchQuery) || (p.description || "").toLowerCase().includes(currentSearchQuery));
+    
+    if (searchProducts.length > 0) {
+      const prices = searchProducts.map(p => parseInt(p.prices.price) / 100);
+      minProductPrice = Math.floor(Math.min(...prices));
+      maxProductPrice = Math.ceil(Math.max(...prices));
+      appliedFilters.minPrice = minProductPrice;
+      appliedFilters.maxPrice = maxProductPrice;
+      draftFilters = JSON.parse(JSON.stringify(appliedFilters));
+    }
+    applyFilters(); 
+    if (typeof buildAmazonSidebar === "function") buildAmazonSidebar();
+  }
 }
 
 function applyFilters() {
   appliedFilters = JSON.parse(JSON.stringify(draftFilters)); 
-  closeFilterSheet();
+  if (typeof closeFilterSheet === "function") closeFilterSheet();
   currentPage = 1; 
   const products = filterProductList(appliedFilters);
   renderSearchResultsGrid(products);
@@ -181,123 +199,16 @@ function filterProductList(filters) {
   return products;
 }
 
-function buildAmazonSidebar() {
-  const sidebar = document.getElementById("filter-sidebar");
-  if (!sidebar) return;
-  const searchVal = document.getElementById("filter-search-input")?.value.toLowerCase() || "";
-  let currentProducts = globalProducts;
-  if (currentSearchQuery) currentProducts = globalProducts.filter(p => p.name.toLowerCase().includes(currentSearchQuery) || (p.description || "").toLowerCase().includes(currentSearchQuery));
-
-  let tabs = [ { id: "sort", label: "Sort By" }, { id: "price", label: "Price and Deals" } ];
-  const validCats = [...new Set(currentProducts.flatMap(p => p.categories.map(c => c.name)))];
-  if (validCats.length > 0) tabs.push({ id: "category", label: "Categories" });
-  const validAttributes = [...new Set(currentProducts.flatMap(p => p.attributes?.map(a => a.name) || []))];
-  validAttributes.forEach(attr => { if (currentProducts.some(p => p.attributes?.find(a => a.name === attr)?.terms.length > 0)) tabs.push({ id: `attr-${attr}`, label: attr }); });
-  
-  const filteredTabs = tabs.filter(t => t.label.toLowerCase().includes(searchVal));
-  if (filteredTabs.length === 0) { sidebar.innerHTML = `<div style="padding: 16px; color: #888; font-size: 14px;">No filters found.</div>`; document.getElementById("filter-content").innerHTML = ""; return; }
-  if (!filteredTabs.find(t => t.id === activeSidebarTab)) activeSidebarTab = filteredTabs[0].id;
-  
-  sidebar.innerHTML = filteredTabs.map(t => `<div onclick="switchFilterTab('${t.id}')" style="padding: 16px; font-size: 14px; border-bottom: 1px solid #eee; cursor: pointer; background: ${activeSidebarTab === t.id ? '#fff' : '#f9f9f9'}; border-left: 3px solid ${activeSidebarTab === t.id ? '#111' : 'transparent'}; font-weight: ${activeSidebarTab === t.id ? '600' : '400'}; color: ${activeSidebarTab === t.id ? '#111' : '#555'};">${t.label}</div>`).join("");
-  renderFilterContent();
-}
-
-function switchFilterTab(tabId) { activeSidebarTab = tabId; buildAmazonSidebar(); }
-
-function renderFilterContent() {
-  const content = document.getElementById("filter-content");
-  if (!content) return;
-  const searchVal = document.getElementById("filter-search-input")?.value.toLowerCase() || "";
-  let html = "";
-  if (activeSidebarTab === "sort") {
-    const sorts = [{id: 'relevance', label: 'Relevance'},{id: 'price-low', label: 'Price: Low to High'},{id: 'price-high', label: 'Price: High to Low'},{id: 'rating', label: 'Customer Rating'}].filter(s => s.label.toLowerCase().includes(searchVal));
-    if (sorts.length === 0) { content.innerHTML = "<p style='color:#888;'>No sort options found.</p>"; return; }
-    html += `<h3 style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">Sort By</h3>`;
-    html += sorts.map(s => `<label style="display:flex; align-items:center; gap:12px; font-size:15px; padding:12px 0; cursor:pointer;"><input type="radio" name="sort" value="${s.id}" ${draftFilters.sort === s.id ? 'checked' : ''} onchange="updateDraft('sort', '${s.id}')" style="width:20px; height:20px; accent-color:#111;"><span>${s.label}</span></label>`).join('');
-  }
-  if (activeSidebarTab === "price") {
-    html += `<h3 style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">Price and Deals</h3>`;
-    let currentProducts = globalProducts;
-    if (currentSearchQuery) currentProducts = globalProducts.filter(p => p.name.toLowerCase().includes(currentSearchQuery) || (p.description || "").toLowerCase().includes(currentSearchQuery));
-    const availableDiscounts = currentProducts.map(p => { if (!p.on_sale || parseInt(p.prices.regular_price) <= parseInt(p.prices.price)) return 0; return Math.round(((parseInt(p.prices.regular_price) - parseInt(p.prices.price)) / parseInt(p.prices.regular_price)) * 100); }).filter(d => d > 0);
-    if (availableDiscounts.length > 0 && "discount".includes(searchVal)) {
-      const maxDiscount = Math.max(...availableDiscounts);
-      let discountOptions = [];
-      if (maxDiscount >= 10) discountOptions.push(10);
-      if (maxDiscount >= 20) discountOptions.push(20);
-      if (maxDiscount >= 30) discountOptions.push(30);
-      if (maxDiscount >= 50) discountOptions.push(50);
-      if (maxDiscount >= 70) discountOptions.push(70);
-      html += `<h4 style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">Discount</h4>`;
-      html += `<div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom: 24px;">${discountOptions.map(d => `<div onclick="updateDraft('minDiscount', ${d === draftFilters.minDiscount ? 0 : d})" style="padding: 8px 16px; border-radius: 20px; border: 1px solid ${draftFilters.minDiscount === d ? '#111' : '#ddd'}; background: ${draftFilters.minDiscount === d ? '#111' : '#fff'}; color: ${draftFilters.minDiscount === d ? '#fff' : '#333'}; font-size: 13px; cursor: pointer;">${d}% Off or more</div>`).join('')}</div>`;
-    }
-    if ("price".includes(searchVal)) {
-      html += `<h4 style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">Price</h4>`;
-      html += `<div style="font-size: 16px; font-weight: 700; margin-bottom: 16px;">$${draftFilters.minPrice} - $${draftFilters.maxPrice}</div>`;
-      const minPercent = ((draftFilters.minPrice - minProductPrice) / (maxProductPrice - minProductPrice)) * 100;
-      const maxPercent = ((draftFilters.maxPrice - minProductPrice) / (maxProductPrice - minProductPrice)) * 100;
-      html += `<div class="custom-slider-container" style="width: 100%;"><div class="custom-slider-track"></div><div class="custom-slider-fill" style="left: ${minPercent}%; width: ${maxPercent - minPercent}%;"></div><div class="custom-slider-thumb" id="thumb-min" style="left: ${minPercent}%;" onpointerdown="startDrag(this, event)"></div><div class="custom-slider-thumb" id="thumb-max" style="left: ${maxPercent}%;" onpointerdown="startDrag(this, event)"></div></div>`;
-    }
-  }
-  if (activeSidebarTab === "category") {
-    let currentProducts = globalProducts;
-    if (currentSearchQuery) currentProducts = globalProducts.filter(p => p.name.toLowerCase().includes(currentSearchQuery) || (p.description || "").toLowerCase().includes(currentSearchQuery));
-    let cats = [...new Set(currentProducts.flatMap(p => p.categories.map(c => c.name)))].filter(c => c.toLowerCase().includes(searchVal));
-    if (cats.length === 0) { content.innerHTML = "<p style='color:#888;'>No categories found.</p>"; return; }
-    html += `<h3 style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">Categories</h3>`;
-    html += cats.map(c => `<label style="display:flex; align-items:center; gap:12px; font-size:15px; padding:10px 0; cursor:pointer;"><input type="radio" name="cat" ${draftFilters.category === c ? 'checked' : ''} onchange="updateDraft('category', '${c}')" style="width:20px; height:20px; accent-color:#111;"><span>${c}</span></label>`).join('');
-  }
-  if (activeSidebarTab.startsWith("attr-")) {
-    const attrName = activeSidebarTab.replace("attr-", "");
-    let currentProducts = globalProducts;
-    if (currentSearchQuery) currentProducts = globalProducts.filter(p => p.name.toLowerCase().includes(currentSearchQuery) || (p.description || "").toLowerCase().includes(currentSearchQuery));
-    let terms = [...new Set(currentProducts.flatMap(p => p.attributes?.filter(a => a.name === attrName).flatMap(a => a.terms.map(t => t.name)) || []))].filter(t => t.toLowerCase().includes(searchVal));
-    if (terms.length === 0) { content.innerHTML = "<p style='color:#888;'>No options found.</p>"; return; }
-    html += `<h3 style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">${attrName}</h3>`;
-    html += `<div style="display:flex; flex-wrap:wrap; gap:10px;">${terms.map(t => { const isActive = draftFilters.attributes[attrName] === t; return `<div onclick="toggleDraftAttr('${attrName}', '${t}')" style="padding: 10px 16px; border-radius: 20px; border: 1px solid ${isActive ? '#111' : '#ddd'}; background: ${isActive ? '#111' : '#fff'}; color: ${isActive ? '#fff' : '#333'}; font-size: 14px; cursor: pointer;">${t}</div>`; }).join('')}</div>`;
-  }
-  content.innerHTML = html;
-}
-
-function updateDraft(key, value) {
-  draftFilters[key] = value;
-  if (key === 'minPrice' && value >= draftFilters.maxPrice) draftFilters.minPrice = draftFilters.maxPrice - 1;
-  if (key === 'maxPrice' && value <= draftFilters.minPrice) draftFilters.maxPrice = draftFilters.minPrice + 1;
-  renderFilterContent(); updateFilterCountPreview();
-}
-function toggleDraftAttr(attrName, term) {
-  if (draftFilters.attributes[attrName] === term) delete draftFilters.attributes[attrName];
-  else draftFilters.attributes[attrName] = term;
-  renderFilterContent(); updateFilterCountPreview();
-}
-function updateFilterCountPreview() {
-  const tempProducts = filterProductList(draftFilters);
-  const el = document.getElementById("filter-result-count");
-  if (el) el.textContent = tempProducts.length;
-}
-function executeFilterSearch() { buildAmazonSidebar(); }
-
 function renderSearchResultsGrid(products) {
   const grid = document.getElementById("final-results-grid");
   if (!grid) return;
-  const wishlist = getWishlist();
-  const pillsContainer = document.getElementById("active-filters-container");
-  let activePillsHtml = "", activeCount = 0;
   
-  if (appliedFilters.category) { activePillsHtml += `<div onclick="resetSpecificFilter('category')" style="display:flex; align-items:center; gap:6px; padding:6px 12px; background:#f0f0f0; border-radius:20px; font-size:13px; white-space:nowrap; cursor:pointer;">${appliedFilters.category} <i class="fa-solid fa-xmark"></i></div>`; activeCount++; }
-  if (appliedFilters.minDiscount > 0) { activePillsHtml += `<div onclick="resetSpecificFilter('minDiscount')" style="display:flex; align-items:center; gap:6px; padding:6px 12px; background:#f0f0f0; border-radius:20px; font-size:13px; white-space:nowrap; cursor:pointer;">${appliedFilters.minDiscount}% Off+ <i class="fa-solid fa-xmark"></i></div>`; activeCount++; }
-  if (appliedFilters.sort !== 'relevance') { activePillsHtml += `<div onclick="resetSpecificFilter('sort')" style="display:flex; align-items:center; gap:6px; padding:6px 12px; background:#f0f0f0; border-radius:20px; font-size:13px; white-space:nowrap; cursor:pointer;">Sorted <i class="fa-solid fa-xmark"></i></div>`; activeCount++; }
-  for (let [k, v] of Object.entries(appliedFilters.attributes)) { activePillsHtml += `<div onclick="resetSpecificFilter('attr','${k}')" style="display:flex; align-items:center; gap:6px; padding:6px 12px; background:#f0f0f0; border-radius:20px; font-size:13px; white-space:nowrap; cursor:pointer;">${v} <i class="fa-solid fa-xmark"></i></div>`; activeCount++; }
-  if (appliedFilters.minPrice > minProductPrice || appliedFilters.maxPrice < maxProductPrice) { activePillsHtml += `<div onclick="resetSpecificFilter('price')" style="display:flex; align-items:center; gap:6px; padding:6px 12px; background:#f0f0f0; border-radius:20px; font-size:13px; white-space:nowrap; cursor:pointer;">$${appliedFilters.minPrice}-$${appliedFilters.maxPrice} <i class="fa-solid fa-xmark"></i></div>`; activeCount++; }
-  
-  if (pillsContainer) {
-    if (activeCount > 0) { pillsContainer.style.display = "flex"; pillsContainer.innerHTML = activePillsHtml + `<span onclick="resetFilters()" style="font-size:13px; color:#FF4B2B; font-weight:600; cursor:pointer; white-space:nowrap;">Clear All</span>`; } 
-    else { pillsContainer.style.display = "none"; }
+  if (!products || products.length === 0) { 
+    grid.innerHTML = `<div style="grid-column: span 2; text-align: center; padding: 40px;"><h3>No products found</h3></div>`; 
+    const pc = document.getElementById("pagination-controls");
+    if (pc) pc.style.display = "none"; 
+    return; 
   }
-  const badge = document.getElementById("active-filter-count"); 
-  if (badge) { badge.style.display = activeCount > 0 ? "flex" : "none"; badge.textContent = activeCount; }
-
-  if (!products || products.length === 0) { grid.innerHTML = `<div style="grid-column: span 2; text-align: center; padding: 40px;"><h3>No products found</h3><p style="color:#666; font-size:14px; margin-top:8px;">Try adjusting your filters.</p></div>`; document.getElementById("pagination-controls").style.display = "none"; return; }
   
   const itemsPerPage = 20; const totalPages = Math.ceil(products.length / itemsPerPage);
   if (currentPage > totalPages) currentPage = totalPages;
@@ -309,9 +220,10 @@ function renderSearchResultsGrid(products) {
   if (pcontrols) {
     if (totalPages > 1) {
       pcontrols.style.display = "flex";
-      document.getElementById("page-indicator").textContent = `Page ${currentPage} of ${totalPages}`;
-      document.getElementById("prev-btn").disabled = currentPage === 1; document.getElementById("prev-btn").style.opacity = currentPage === 1 ? "0.5" : "1";
-      document.getElementById("next-btn").disabled = currentPage === totalPages; document.getElementById("next-btn").style.opacity = currentPage === totalPages ? "0.5" : "1";
+      const pi = document.getElementById("page-indicator");
+      if (pi) pi.textContent = `Page ${currentPage} of ${totalPages}`;
+      const pb = document.getElementById("prev-btn"); if(pb) { pb.disabled = currentPage === 1; pb.style.opacity = currentPage === 1 ? "0.5" : "1"; }
+      const nb = document.getElementById("next-btn"); if(nb) { nb.disabled = currentPage === totalPages; nb.style.opacity = currentPage === totalPages ? "0.5" : "1"; }
     } else { pcontrols.style.display = "none"; }
   }
 
@@ -321,24 +233,12 @@ function renderSearchResultsGrid(products) {
       const percent = Math.round(((parseInt(p.prices.regular_price) - parseInt(p.prices.price)) / parseInt(p.prices.regular_price)) * 100);
       discountTag = `<div style="background: #FFD700; color: #111; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 4px;">${percent}% OFF</div>`;
     }
-    const isSaved = wishlist.some(item => item.id === p.id); const heartColor = isSaved ? "#FF4B2B" : "#aaa"; const heartIcon = isSaved ? "fa-solid fa-heart" : "fa-regular fa-heart";
-    return `<div style="background: #fff; border-radius: 12px; padding: 12px; position: relative; box-shadow: 0 2px 8px rgba(0,0,0,0.04); cursor: pointer;" onclick="navigate('product', ${p.id})"><button onclick="event.stopPropagation(); toggleWishlist(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.prices.price}, '${p.images[0]?.thumbnail || ''}')" style="position: absolute; top: 12px; right: 12px; background: none; border: none; z-index: 2;"><i class="${heartIcon}" style="font-size: 18px; color: ${heartColor};"></i></button><img src="${p.images[0]?.thumbnail || ''}" style="width: 100%; aspect-ratio: 1/1; object-fit: contain; margin-bottom: 8px;">${discountTag}<div style="font-size: 15px; font-weight: 700; color: #111; margin-bottom: 4px;">${p.price_html}</div><h3 style="font-size: 13px; color: #555; line-height: 1.3; margin-bottom: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${p.name}</h3><div style="display: flex; justify-content: space-between; align-items: center;"><span style="font-size: 11px; color: #888;">1 unit</span><button onclick="event.stopPropagation(); addToCart(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.prices.price}, '${p.images[0]?.thumbnail || ''}')" style="background: #fff; border: 1px solid #008C4A; color: #008C4A; font-weight: 700; font-size: 14px; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer;">+</button></div></div>`;
+    return `<div style="background: #fff; border-radius: 12px; padding: 12px; position: relative; box-shadow: 0 2px 8px rgba(0,0,0,0.04); cursor: pointer;" onclick="navigate('product', ${p.id})"><img src="${p.images[0]?.thumbnail || ''}" style="width: 100%; aspect-ratio: 1/1; object-fit: contain; margin-bottom: 8px;">${discountTag}<div style="font-size: 15px; font-weight: 700; color: #111; margin-bottom: 4px;">${p.price_html}</div><h3 style="font-size: 13px; color: #555; line-height: 1.3; margin-bottom: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${p.name}</h3><div style="display: flex; justify-content: space-between; align-items: center;"><span style="font-size: 11px; color: #888;">1 unit</span><button onclick="event.stopPropagation(); addToCart(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.prices.price}, '${p.images[0]?.thumbnail || ''}')" style="background: #fff; border: 1px solid #008C4A; color: #008C4A; font-weight: 700; font-size: 14px; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer;">+</button></div></div>`;
   }).join("");
 }
 
-function resetSpecificFilter(type, key) { 
-  if (type === 'category') appliedFilters.category = null; 
-  if (type === 'minDiscount') appliedFilters.minDiscount = 0; 
-  if (type === 'sort') appliedFilters.sort = 'relevance'; 
-  if (type === 'price') { appliedFilters.minPrice = minProductPrice; appliedFilters.maxPrice = maxProductPrice; } 
-  if (type === 'attr') delete appliedFilters.attributes[key]; 
-  const products = filterProductList(appliedFilters); 
-  renderSearchResultsGrid(products); 
-}
-function resetFilters() { draftFilters = getEmptyFilters(); draftFilters.minPrice = minProductPrice; draftFilters.maxPrice = maxProductPrice; buildAmazonSidebar(); updateFilterCountPreview(); }
-
 // ==========================================
-// 4. PRODUCT DETAILS PAGE
+// 4. PRODUCT PAGE (Bulletproof Rendering)
 // ==========================================
 async function loadSingleProduct(id) {
   const el = document.getElementById("product-detail");
@@ -353,6 +253,7 @@ async function loadSingleProduct(id) {
     let p = globalProducts.find(item => item.id == id);
     if (!p) { 
       const res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products/${id}`); 
+      if (!res.ok) throw new Error("Product not found");
       p = await res.json(); 
     }
     currentProduct = p;
@@ -364,9 +265,8 @@ async function loadSingleProduct(id) {
     }
 
     let imgHtml = `<div style="position: relative;">
-        <i class="fa-solid fa-arrow-left" onclick="history.back()" style="position: absolute; top: 16px; left: 16px; font-size: 20px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 50%; cursor: pointer; z-index: 10; backdrop-filter: blur(4px;"></i>
-        <i class="fa-regular fa-heart" onclick="toggleWishlist(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.prices.price}, '${p.images[0]?.thumbnail || ''}')" style="position: absolute; top: 16px; right: 16px; font-size: 20px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 50%; cursor: pointer; z-index: 10; backdrop-filter: blur(4px;"></i>
-        <img src="${p.images[0]?.src || ''}" style="width:100%; aspect-ratio: 1/1; object-fit: cover; border-bottom: 1px solid #eee;">
+        <i class="fa-solid fa-arrow-left" onclick="history.back()" style="position: absolute; top: 16px; left: 16px; font-size: 20px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 50%; cursor: pointer; z-index: 10;"></i>
+        <img src="${p.images[0]?.src || ''}" style="width:100%; aspect-ratio: 1/1; object-fit: cover;">
       </div>`;
 
     let attrHtml = "";
@@ -381,18 +281,6 @@ async function loadSingleProduct(id) {
         attrHtml += `</div></div>`;
       });
       attrHtml += `</div>`;
-    }
-
-    let groupedHtml = "";
-    if (p.type === "grouped" && p.grouped_products && p.grouped_products.length > 0) {
-      groupedHtml = `<div style="background:#fff; padding:16px; margin-top:8px;"><h3 style="font-size:16px; margin-bottom:12px;">Products in this Collection</h3><div id="grouped-list-${p.id}">Loading items...</div></div>`;
-      setTimeout(() => loadGroupedList(p), 100);
-    }
-
-    let extHtml = "";
-    if (p.type === "external") {
-      const extUrl = p.external_url || p.permalink;
-      extHtml = `<div style="padding:16px;"><a href="${extUrl}" target="_blank" style="display:block; text-align:center; background:#111; color:#fff; padding:16px; border-radius:12px; text-decoration:none; font-weight:700;">Buy Now on External Site</a></div>`;
     }
 
     let reviewHtml = `
@@ -410,24 +298,22 @@ async function loadSingleProduct(id) {
       ${imgHtml}
       <div style="padding: 20px 16px; background:#fff;">
         <div style="font-size: 28px; font-weight: 800; color: #111; margin-bottom: 8px;">${p.price_html}</div>
-        <h1 style="font-size: 24px; font-weight: 600; color: #333; margin-bottom: 16px; line-height: 1.3;">${p.name}</h1>
-        <div style="font-size: 14px; color: #666; line-height: 1.6;">${p.description || p.short_description || 'No description available.'}</div>
+        <h1 style="font-size: 24px; font-weight: 600; color: #333; margin-bottom: 16px;">${p.name}</h1>
+        <div style="font-size: 14px; color: #666;">${p.description || ''}</div>
       </div>
       ${attrHtml}
-      ${groupedHtml}
-      ${extHtml}
       ${reviewHtml}
     `;
     
     document.getElementById("main-btn-price").textContent = (parseInt(p.prices.price) / 100).toFixed(2);
-    stickyBar.style.display = (p.type === 'external' || p.type === 'grouped') ? "none" : "block";
+    stickyBar.style.display = "block";
     updateProductAddButton();
 
     if (p.review_count > 0) fetchInlineReviews(p.id);
 
   } catch(e) { 
-    el.innerHTML = "<p style='padding:16px;'>Error loading product.</p>"; 
-    console.log(e); 
+    el.innerHTML = `<p style='padding:16px;'>Error loading product.</p>`; 
+    console.log("Product error:", e); 
   }
 }
 
@@ -441,12 +327,10 @@ async function fetchInlineReviews(productId) {
   if (!box) return;
   
   try {
-    // 1. Fetch using CORS proxy to bypass GitHub Pages restrictions
     const proxyUrl = "https://api.allorigins.win/get?url=" + encodeURIComponent(APP_CONFIG.siteUrl + "/?p=" + productId);
     const res = await fetch(proxyUrl);
     const data = await res.json();
     
-    // 2. Parse HTML
     const doc = new DOMParser().parseFromString(data.contents, "text/html");
     const items = doc.querySelectorAll(".ns-product-review");
     
@@ -470,43 +354,14 @@ async function fetchInlineReviews(productId) {
           `</div>`;
       }
 
-      html += `
-        <div style="display:flex; gap:12px; border-bottom:1px solid #eee; padding-bottom:12px;">
-          <img src="${avatar}" style="width:36px; height:36px; border-radius:50%;">
-          <div style="flex:1;">
-            <div style="font-size:13px; font-weight:700;">${author}</div>
-            <div style="color:#FFD700; font-size:12px;">★★★★★</div>
-            <div style="font-size:13px; color:#555; margin-top:4px;">${text}</div>
-            ${imagesHtml}
-          </div>
-        </div>`;
+      html += `<div style="display:flex; gap:12px; border-bottom:1px solid #eee; padding-bottom:12px;"><img src="${avatar}" style="width:36px; height:36px; border-radius:50%;"><div style="flex:1;"><div style="font-size:13px; font-weight:700;">${author}</div><div style="color:#FFD700; font-size:12px;">★★★★★</div><div style="font-size:13px; color:#555; margin-top:4px;">${text}</div>${imagesHtml}</div></div>`;
     }
     html += `</div>`;
     box.innerHTML = html;
 
   } catch (err) {
-    console.log("Inline review error:", err);
     box.innerHTML = "<p style='color:#888;font-size:13px;'>Unable to load reviews.</p>";
   }
-}
-
-async function loadGroupedList(p) {
-  const el = document.getElementById(`grouped-list-${p.id}`);
-  if(!el) return;
-  try {
-    let res = await fetch(`${APP_CONFIG.siteUrl}/wp-json/wc/store/v1/products?include=${p.grouped_products.join(',')}`);
-    let items = await res.json();
-    el.innerHTML = items.map(item => `
-      <div style="display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid #eee;">
-        <img src="${item.images[0]?.thumbnail}" style="width:50px; height:50px; border-radius:6px; object-fit:cover;">
-        <div style="flex:1;">
-          <div style="font-size:14px; font-weight:600;">${item.name}</div>
-          <div style="font-size:13px; color:#666;">${item.price_html}</div>
-        </div>
-        <button onclick="addToCart(${item.id}, '${item.name.replace(/'/g, "\\'")}', ${item.prices.price}, '${item.images[0]?.thumbnail}', 1)" style="background:#111; color:#fff; border:none; padding:8px 16px; border-radius:6px; font-weight:600;">Add</button>
-      </div>
-    `).join("");
-  } catch(e) { el.innerHTML = "Error loading grouped items."; }
 }
 
 // ==========================================
