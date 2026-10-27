@@ -402,18 +402,18 @@ async function loadReviewsCarousel(productId) {
   el.innerHTML = '<p style="color:#888;padding:20px 0;">Loading reviews...</p>';
 
   var reviews = [];
+  var targetUrl = APP_CONFIG.siteUrl + "/?p=" + productId;
+  // Use CORS proxy to bypass GitHub Pages -> WooCommerce block
+  var proxyUrl = "https://api.allorigins.win/get?url=" + encodeURIComponent(targetUrl);
 
   try {
-    // Fetch the actual product HTML page (bypasses API media restrictions)
-    var pageRes = await fetch(APP_CONFIG.siteUrl + "/?p=" + productId);
-    if (!pageRes.ok) throw new Error("HTML fetch failed: " + pageRes.status);
-    var htmlText = await pageRes.text();
+    var pageRes = await fetch(proxyUrl);
+    if (!pageRes.ok) throw new Error("Proxy fetch failed: " + pageRes.status);
+    var proxyData = await pageRes.json();
+    var htmlText = proxyData.contents;
     
-    // Parse the HTML
     var parser = new DOMParser();
     var doc = parser.parseFromString(htmlText, "text/html");
-    
-    // Find all review blocks
     var reviewItems = doc.querySelectorAll(".ns-product-review");
     
     reviewItems.forEach(function(item) {
@@ -427,7 +427,6 @@ async function loadReviewsCarousel(productId) {
       }
       var avatar = item.querySelector(".avatar") ? item.querySelector(".avatar").src : "";
       
-      // Extract review images
       var images = [];
       var imgEls = item.querySelectorAll(".nasa-wrap-review-thumb img");
       imgEls.forEach(function(img) { images.push(img.src); });
@@ -442,8 +441,8 @@ async function loadReviewsCarousel(productId) {
     });
 
   } catch (err) {
-    console.log("HTML scraping failed:", err);
-    // If HTML scraping fails (e.g. CORS), fallback to JSON API (no images)
+    console.log("CORS Proxy scraping failed:", err);
+    // Fallback to WC API (will work if CORS isn't blocking the API)
     try {
       var res = await fetch(APP_CONFIG.siteUrl + "/wp-json/wc/store/v1/products/reviews?product_id=" + productId + "&per_page=100");
       if (res.ok) {
@@ -458,7 +457,7 @@ async function loadReviewsCarousel(productId) {
           };
         });
       }
-    } catch(e) {}
+    } catch(e) { console.log("API fallback also failed", e); }
   }
 
   if (reviews.length === 0) {
