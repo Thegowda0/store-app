@@ -6,13 +6,28 @@
   <meta name="theme-color" content="#111111">
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="style.css?v=11">
+  <link rel="stylesheet" href="style.css?v=99">
   <title>My Store</title>
+  <script>
+    // KILL SERVICE WORKER AND CLEAR CACHE ON LOAD
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for(let registration of registrations) {
+          registration.unregister();
+        }
+      });
+    }
+    if ('caches' in window) {
+      caches.keys().then(function(names) {
+        for (let name of names) caches.delete(name);
+      });
+    }
+  </script>
 </head>
 <body>
   <div id="page-container"></div>
   <nav id="tabbar"></nav>
-  <script src="config.js?v=10"></script>
-  <script src="app.js?v=1793082156"></script>
+  <script src="config.js?v=99
+  <script src="app.js?v=99
 </body>
 </html>
